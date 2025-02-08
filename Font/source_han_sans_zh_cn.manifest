@@ -1,0 +1,44 @@
+ManifestFileVersion: 0
+CRC: 2846425069
+Hashes:
+  AssetFileHash:
+    serializedVersion: 2
+    Hash: 723867450bee6ae621f197d9510e7900
+  TypeTreeHash:
+    serializedVersion: 2
+    Hash: 4a3049f26ac127446aa07fd9b718c1e4
+HashAppended: 0
+ClassTypes:
+- Class: 1
+  Script: {instanceID: 0}
+- Class: 4
+  Script: {instanceID: 0}
+- Class: 21
+  Script: {instanceID: 0}
+- Class: 28
+  Script: {instanceID: 0}
+- Class: 48
+  Script: {instanceID: 0}
+- Class: 49
+  Script: {instanceID: 0}
+- Class: 114
+  Script: {fileID: 11500000, guid: 023bfc31841d2f24ba7eb00462467382, type: 3}
+- Class: 114
+  Script: {fileID: 11500000, guid: e6f1b071e71b3a14684c624ec4461224, type: 3}
+- Class: 114
+  Script: {fileID: 11500000, guid: 35be0f790243a0c46b505c114d7122ae, type: 3}
+- Class: 115
+  Script: {instanceID: 0}
+- Class: 128
+  Script: {instanceID: 0}
+- Class: 213
+  Script: {instanceID: 0}
+Assets:
+- Assets/CutsomFonts/SourceHanSansCN-Normal.otf
+- Assets/CutsomFonts/SourceHanSansCN_0.png
+- Assets/CutsomFonts/SourceHanSansCN_tk2ddata.prefab
+- Assets/CutsomFonts/SourceHanSansCN.fnt
+- Assets/CutsomFonts/SourceHanSansCN_dfDynamic.prefab
+- Assets/CutsomFonts/SourceHanSansCN_tk2dmaterial.mat
+- Assets/CutsomFonts/SourceHanSansCN_tk2d.prefab
+Dependencies: []
