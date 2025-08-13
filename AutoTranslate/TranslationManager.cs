@@ -112,14 +112,23 @@ namespace AutoTranslate
                 }
             }
 
-            if (config.RegexForFullTextNeedToTranslate != string.Empty)
-                fullTextRegex = new Regex(config.RegexForFullTextNeedToTranslate, RegexOptions.Singleline | RegexOptions.Compiled);
+            if (config.FilterForFullTextNeedToTranslate == AutoTranslateModule.FilterForFullTextNeedToTranslateType.CustomRegex)
+            {
+                if (config.RegexForFullTextNeedToTranslate != string.Empty)
+                    fullTextRegex = new Regex(config.RegexForFullTextNeedToTranslate, RegexOptions.Singleline | RegexOptions.Compiled);
+            }
 
-            if (config.RegexForEachLineNeedToTranslate != string.Empty)
-                eachLineRegex = new Regex(config.RegexForEachLineNeedToTranslate, RegexOptions.Singleline | RegexOptions.Compiled);
+            if (config.FilterForEachLineNeedToTranslate == AutoTranslateModule.FilterForEachLineNeedToTranslateType.CustomRegex)
+            {
+                if (config.RegexForEachLineNeedToTranslate != string.Empty)
+                    eachLineRegex = new Regex(config.RegexForEachLineNeedToTranslate, RegexOptions.Singleline | RegexOptions.Compiled);
+            }
 
-            if (config.RegexForIgnoredSubstringWithinText != string.Empty)
-                ignoredSubstringWithinTextRegex = new Regex(config.RegexForIgnoredSubstringWithinText, RegexOptions.Multiline | RegexOptions.Compiled);
+            if (config.FilterForIgnoredSubstringWithinText == AutoTranslateModule.FilterForIgnoredSubstringWithinTextType.CustomRegex)
+            {
+                if (config.RegexForIgnoredSubstringWithinText != string.Empty)
+                    ignoredSubstringWithinTextRegex = new Regex(config.RegexForIgnoredSubstringWithinText, RegexOptions.Multiline | RegexOptions.Compiled);
+            }
 
             batchSubTexts = new List<string>();
             batchSplitMap = new Dictionary<string, List<string>>();
@@ -159,21 +168,89 @@ namespace AutoTranslate
                 StatusLabelController.instance.SetText($"AT: {requestedCharacterCount}");
         }
 
+        private static bool FullTextFilter(string text)
+        {
+            return text.StartsWith("Enter the Gungeon");
+        }
+
+        private static bool EachLineFilter(string line)
+        {
+            if (line.Length > 0 && (line[0] == '@' || line[0] == '#'))
+                return false;
+
+            bool hasNonWhiteSpace = false;
+            foreach (char c in line)
+            {
+                if (!char.IsWhiteSpace(c))
+                {
+                    hasNonWhiteSpace = true;
+                    break;
+                }
+            }
+            if (!hasNonWhiteSpace)
+                return false;
+
+            bool allDigitOrPunct = true;
+            foreach (char c in line)
+            {
+                if (!char.IsDigit(c) && !char.IsPunctuation(c))
+                {
+                    allDigitOrPunct = false;
+                    break;
+                }
+            }
+            if (allDigitOrPunct)
+                return false;
+
+            foreach (char c in line)
+            {
+                if ((c >= '\u4e00' && c <= '\u9fa5') ||
+                    (c >= '\u3000' && c <= '\u303F') ||
+                    (c >= '\uFF00' && c <= '\uFFEF'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private bool NeedToTranslate(string text)
         {
             if (IsNullOrWhiteSpace(text))
                 return false;
 
-            if (fullTextRegex != null && !fullTextRegex.IsMatch(text))
-                return false;
-
-            string[] lines;
-            if (eachLineRegex != null)
+            if (config.FilterForFullTextNeedToTranslate == AutoTranslateModule.FilterForFullTextNeedToTranslateType.CustomRegex)
             {
-                lines = text.Split(newLineSymbols, StringSplitOptions.None);
+                if (fullTextRegex != null && !fullTextRegex.IsMatch(text))
+                    return false;
+            }
+            else
+            {
+                if (FullTextFilter(text))
+                    return false;
+            }
+
+
+            if (config.FilterForEachLineNeedToTranslate == AutoTranslateModule.FilterForEachLineNeedToTranslateType.CustomRegex)
+            {
+                if (eachLineRegex != null)
+                {
+                    string[] lines = text.Split(newLineSymbols, StringSplitOptions.None);
+                    foreach (string line in lines)
+                    {
+                        if (eachLineRegex.IsMatch(line))
+                            return true;
+                    }
+                    return false;
+                }
+            }
+            else
+            {
+                string[] lines = text.Split(newLineSymbols, StringSplitOptions.None);
                 foreach (string line in lines)
                 {
-                    if (eachLineRegex.IsMatch(line))
+                    if (EachLineFilter(line))
                         return true;
                 }
                 return false;
@@ -251,6 +328,183 @@ namespace AutoTranslate
             }
         }
 
+        public static List<string> SubstringFilter(string text, bool keepMatches)
+        {
+            var parts = new List<string>();
+            if (string.IsNullOrEmpty(text))
+                return parts;
+
+            int len = text.Length, i = 0, segmentStart = 0;
+
+            bool IsChineseChar(char c) =>
+                (c >= '\u4e00' && c <= '\u9fa5') ||
+                (c >= '\u3000' && c <= '\u303F') ||
+                (c >= '\uFF00' && c <= '\uFFEF');
+
+            void AddSegIfNotEmpty(int start, int end)
+            {
+                if (end <= start)
+                    return;
+
+                int left = start;
+                int right = end - 1;
+
+                while (left <= right && char.IsWhiteSpace(text[left]))
+                    left++;
+
+                while (right >= left && char.IsWhiteSpace(text[right]))
+                    right--;
+
+                if (right < left)
+                    return;
+
+                int length = right - left + 1;
+                string seg = text.Substring(left, length);
+
+                if (!IsNullOrWhiteSpace(seg))
+                    parts.Add(seg);
+            }
+
+            bool StartsWithAt(string source, int index, string value, StringComparison comparison)
+            {
+                if (index < 0 || index + value.Length > source.Length)
+                    return false;
+                return string.Compare(source, index, value, 0, value.Length, comparison) == 0;
+            }
+
+            while (i < len)
+            {
+                int matchLen = 0;
+
+                if (text[i] == '[' && StartsWithAt(text, i, "[color ", StringComparison.OrdinalIgnoreCase))
+                {
+                    int closeIdx = text.IndexOf(']', i + 7);
+                    if (closeIdx != -1)
+                        matchLen = closeIdx - i + 1;
+                }
+                else if (text[i] == '[' && StartsWithAt(text, i, "[sprite ", StringComparison.OrdinalIgnoreCase))
+                {
+                    int closeIdx = text.IndexOf(']', i + 8);
+                    if (closeIdx != -1)
+                        matchLen = closeIdx - i + 1;
+                }
+                else if (StartsWithAt(text, i, "[/color]", StringComparison.OrdinalIgnoreCase))
+                {
+                    matchLen = 8;
+                }
+                else if (text[i] == '{')
+                {
+                    int closeIdx = text.IndexOf('}', i + 1);
+                    if (closeIdx != -1)
+                        matchLen = closeIdx - i + 1;
+                }
+                else if (text[i] == '^' && i + 9 < len)
+                {
+                    bool valid = true;
+                    for (int k = 1; k <= 9; k++)
+                    {
+                        char c = text[i + k];
+                        if (!(char.IsLetterOrDigit(c) || c == '_'))
+                        {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    if (valid) matchLen = 10;
+                }
+                else if (IsChineseChar(text[i]))
+                {
+                    int j = i;
+                    while (j < len && IsChineseChar(text[j])) j++;
+                    matchLen = j - i;
+                }
+                else if (text[i] == '<' && StartsWithAt(text, i, "<color=", StringComparison.OrdinalIgnoreCase))
+                {
+                    int closeIdx = text.IndexOf('>', i + 7);
+                    if (closeIdx != -1)
+                        matchLen = closeIdx - i + 1;
+                }
+                else if (StartsWithAt(text, i, "</color>", StringComparison.OrdinalIgnoreCase))
+                {
+                    matchLen = 8;
+                }
+                else if ((i == 0 || text[i - 1] == '\n' || text[i - 1] == '\r'))
+                {
+                    int lineStart = i;
+                    int lineEnd = i;
+                    while (lineEnd < len && text[lineEnd] != '\r' && text[lineEnd] != '\n')
+                        lineEnd++;
+
+                    int left = lineStart;
+                    int right = lineEnd - 1;
+
+                    while (left <= right && char.IsWhiteSpace(text[left]))
+                        left++;
+
+                    while (right >= left && char.IsWhiteSpace(text[right]))
+                        right--;
+
+                    if (right >= left)
+                    {
+                        bool allDigitsOrPunct = true;
+                        for (int idx = left; idx <= right; idx++)
+                        {
+                            char c = text[idx];
+                            if (!char.IsDigit(c) && !char.IsPunctuation(c))
+                            {
+                                allDigitsOrPunct = false;
+                                break;
+                            }
+                        }
+
+                        if (allDigitsOrPunct)
+                            matchLen = lineEnd - i;
+                    }
+                }
+
+                if (matchLen == 0 && (text[i] == '<' || text[i] == '>' || text[i] == '[' || text[i] == ']'))
+                    matchLen = 1;
+
+                if (matchLen == 0 && text[i] == '@' && i + 6 < len)
+                {
+                    bool valid = true;
+                    for (int k = 1; k <= 6; k++)
+                    {
+                        if (!Uri.IsHexDigit(text[i + k]))
+                        {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    if (valid) matchLen = 7;
+                }
+
+                if (matchLen > 0)
+                {
+                    if (keepMatches)
+                    {
+                        AddSegIfNotEmpty(segmentStart, i);
+                        parts.Add(text.Substring(i, matchLen));
+                        segmentStart = i + matchLen;
+                    }
+                    else
+                    {
+                        AddSegIfNotEmpty(segmentStart, i);
+                        segmentStart = i + matchLen;
+                    }
+                    i += matchLen;
+                }
+                else
+                {
+                    i++;
+                }
+            }
+
+            AddSegIfNotEmpty(segmentStart, len);
+
+            return parts;
+        }
+
         private int GenerateBatch()
         {
             batchSubTexts.Clear();
@@ -263,12 +517,19 @@ namespace AutoTranslate
             foreach (var text in uniqueTexts)
             {
                 List<string> parts = listStringPool.Get();
-                if (config.RegexForIgnoredSubstringWithinText != null)
-                    parts.AddRange(ignoredSubstringWithinTextRegex.Split(text)
-                                        .Select(part => part.Trim())
-                                        .Where(part => !IsNullOrWhiteSpace(part)));
+                if (config.FilterForIgnoredSubstringWithinText == AutoTranslateModule.FilterForIgnoredSubstringWithinTextType.CustomRegex)
+                {
+                    if (config.RegexForIgnoredSubstringWithinText != null)
+                        parts.AddRange(ignoredSubstringWithinTextRegex.Split(text)
+                                            .Select(part => part.Trim())
+                                            .Where(part => !IsNullOrWhiteSpace(part)));
+                    else
+                        parts.Add(text.Trim());
+                }
                 else
-                    parts.Add(text.Trim());
+                {
+                    parts = SubstringFilter(text, keepMatches: false);
+                }
 
                 bool allTranslated = true;
                 batchTranslatedParts.Clear();
@@ -466,24 +727,33 @@ namespace AutoTranslate
 
             finalChunks.Clear();
 
-            if (ignoredSubstringWithinTextRegex == null)
-                AddChunks(finalChunks, text);
+            if (config.FilterForIgnoredSubstringWithinText == AutoTranslateModule.FilterForIgnoredSubstringWithinTextType.CustomRegex)
+            {
+                if (ignoredSubstringWithinTextRegex == null)
+                    AddChunks(finalChunks, text);
+                else
+                {
+                    MatchCollection matches = ignoredSubstringWithinTextRegex.Matches(text);
+                    int lastIndex = 0;
+
+                    foreach (Match match in matches)
+                    {
+                        if (lastIndex < match.Index)
+                            AddChunks(finalChunks, text.Substring(lastIndex, match.Index - lastIndex));
+
+                        finalChunks.Add(match.Value);
+                        lastIndex = match.Index + match.Length;
+                    }
+
+                    if (lastIndex < text.Length)
+                        AddChunks(finalChunks, text.Substring(lastIndex));
+                }
+            }
             else
             {
-                MatchCollection matches = ignoredSubstringWithinTextRegex.Matches(text);
-                int lastIndex = 0;
-
-                foreach (Match match in matches)
-                {
-                    if (lastIndex < match.Index)
-                        AddChunks(finalChunks, text.Substring(lastIndex, match.Index - lastIndex));
-
-                    finalChunks.Add(match.Value);
-                    lastIndex = match.Index + match.Length;
-                }
-
-                if (lastIndex < text.Length)
-                    AddChunks(finalChunks, text.Substring(lastIndex));
+                List<string> parts = SubstringFilter(text, keepMatches: true);
+                foreach (var part in parts)
+                    AddChunks(finalChunks, part);
             }
 
             foreach (var chunk in finalChunks)
@@ -668,9 +938,13 @@ namespace AutoTranslate
             }
         }
 
-        private static bool IsNullOrWhiteSpace(string value)
+        private static bool IsNullOrWhiteSpace(string s)
         {
-            return string.IsNullOrEmpty(value) || value.Trim().Length == 0;
+            if (string.IsNullOrEmpty(s)) return true;
+            foreach (var ch in s)
+                if (!char.IsWhiteSpace(ch))
+                    return false;
+            return true;
         }
 
         public void ReadAndRestoreTranslationCache(string filePath)

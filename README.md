@@ -58,57 +58,65 @@
 Setting **RegexForFullTextNeedToTranslate**, **RegexForEachLineNeedToTranslate**, and **PresetTranslations** can significantly reduce unnecessary translations. Please refer to detailed description.
 
 ---
-## **4. AutoTranslate功能详细说明**
+## **4. AutoTranslate 功能详细说明**
 
 ### 命令 Command
 - autotranslate save_cache \[cache_json_name\]  
-将翻译缓存保存为\[cache_json_name\]，默认为CachedTranslations.json。
+将翻译缓存保存为\[cache_json_name\]，默认为 CachedTranslations.json。
 - autotranslate load_cache \[cache_json_name\]  
-加载翻译缓存自\[cache_json_name\]，默认为CachedTranslations.json。
+加载翻译缓存自\[cache_json_name\]，默认为 CachedTranslations.json。
 
 ### 总体 General
 
 1. **TranslationAPI**  
-   选择使用的翻译 API。支持腾讯翻译 api、百度翻译 api和 Microsoft Azure 翻译 api。截止 2025.1.29，三者的免费额度为 Tencent 500万字符/月、Baidu 100万字符/月、Azure 200万字符/月。详见官方说明。
+   选择使用的翻译 API。支持腾讯翻译 api、百度翻译 api 和 Microsoft Azure 翻译 api。截止 2025.1.29，三者的免费额度为 Tencent 500万字符/月、Baidu 100万字符/月、Azure 200万字符/月。详见官方说明。
 
 2. **ToggleTranslationKeyBinding**  
    启用或关闭翻译的按键。
 
-3. **RegexForFullTextNeedToTranslate**  
-   正则表达式，一个多行文本若匹配为真，则这个多行文本保留以待翻译。用来筛选待翻译的文本以节省翻译额度。
-   样例RegexForFullTextNeedToTranslate正则表达式：`^(?!Enter the Gungeon).*$`
+3. **FilterForFullTextNeedToTranslate**  
+   对整个文本生效。用来筛选待翻译的文本以节省翻译额度。
 
-4. **RegexForEachLineNeedToTranslate**  
-   正则表达式，多行文本若存在一行匹配，整个多行文本保留以待翻译。用来筛选待翻译的文本以节省翻译额度。样例RegexForEachLineNeedToTranslate正则表达式（适配中文）：`^(?![@#])(?=\S)(?!^[\d\p{P}]+$)(?!.*[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]).*$`
+4. **RegexForFullTextNeedToTranslate**  
+   正则表达式，一个多行文本若匹配为真，则这个多行文本保留以待翻译。只在 FilterForFullTextNeedToTranslate 为 CustomRegex 时生效。样例 RegexForFullTextNeedToTranslate 正则表达式： `^(?!Enter the Gungeon).*$`
 
-5. **RegexForIgnoredSubstringWithinText**  
-   正则表达式，匹配文本中需要忽略的子文本。请使用非捕获组。这通常包括一些要特殊处理的贴图和转义符。样例RegexForIgnoredSubstringWithinText正则表达式（适配中文）：`(?:\[color\s+[^\]]+\])|(?:\[sprite\s+[^\]]+\])|(?:\[/color\])|(?:\{[^}]*\})|(?:\^[\w\d]{9})|(?:[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]+)|(?:<color=[^>]+>)|(?:</color>)|(?:^\s*[\d\p{P}]+\s*$)|(?:[<>\[\]])|(?:@[a-fA-F0-9]{6})`
+5. **FilterForEachLineNeedToTranslate**  
+   对文本的每一行生效。用来筛选待翻译的文本以节省翻译额度。
 
-6. **MaxBatchCharacterCount**  
+6. **RegexForEachLineNeedToTranslate**  
+   正则表达式，多行文本若存在一行匹配，整个多行文本保留以待翻译。只在 FilterForEachLineNeedToTranslate 为 CustomRegex 时生效。样例 RegexForEachLineNeedToTranslate 正则表达式（适配中文）： `^(?![@#])(?=\S)(?!^[\d\p{P}]+$)(?!.*[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]).*$`
+
+7. **FilterForIgnoredSubstringWithinText**  
+   用来过滤文本中需要忽略的子文本。这通常包括一些要特殊处理的贴图和转义符。
+
+8. **RegexForIgnoredSubstringWithinText**  
+   正则表达式，匹配文本中需要忽略的子文本。请使用非捕获组。只在 FilterForIgnoredSubstringWithinText 为 CustomRegex 时生效。样例 RegexForIgnoredSubstringWithinText 正则表达式（适配中文）： `(?:\[color\s+[^\]]+\])|(?:\[sprite\s+[^\]]+\])|(?:\[/color\])|(?:\{[^}]*\})|(?:\^[\w\d]{9})|(?:[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]+)|(?:<color=[^>]+>)|(?:</color>)|(?:^\s*[\d\p{P}]+\s*$)|(?:[<>\[\]])|(?:@[a-fA-F0-9]{6})`
+
+9. **MaxBatchCharacterCount**  
    处理的批量数据最大字符数。若翻译api提示单次请求过长，请减小此值。
 
-7. **MaxBatchTextCount**  
+10. **MaxBatchTextCount**  
    处理的批量数据最大项数。为0表示不限制。
 
-8. **MaxRetryCount**  
+11. **MaxRetryCount**  
    发生错误时的最大重试次数。
 
-9. **RetryInterval**  
+12. **RetryInterval**  
    发生错误时的重试时间间隔。
 
-10. **TranslationCacheCapacity**  
+13. **TranslationCacheCapacity**  
    最大翻译缓存容量。
 
-11. **PresetTranslations**  
-   预设翻译的文件名。使用预设翻译以减少加载时常见文本的翻译请求，留空表示不使用。预设翻译为位于dll同目录下的JSON文件。用“;”分割，文件会按顺序先后加载。
+14. **PresetTranslations**  
+   预设翻译的文件名。使用预设翻译以减少加载时常见文本的翻译请求，留空表示不使用。预设翻译为位于 dll 同目录下的 JSON 文件。用“;”分割，文件会按顺序先后加载。
 
-12. **CachedTranslations**  
-   缓存翻译的文件名。缓存翻译为位于dll同目录下的JSON文件。
+15. **CachedTranslations**  
+   缓存翻译的文件名。缓存翻译为位于 dll 同目录下的 JSON 文件。
 
-13. **AutoSaveCachedTranslationsUponQuit**  
+16. **AutoSaveCachedTranslationsUponQuit**  
    是否在退出时自动保存缓存翻译。强制退出时不会生效。
 
-14. **LogRequestedTexts**  
+17. **LogRequestedTexts**  
    是否在日志中显示请求翻译的文本。
 
 ### 字体 Font
@@ -125,21 +133,16 @@ Setting **RegexForFullTextNeedToTranslate**, **RegexForEachLineNeedToTranslate**
 4. **CustomTk2dFontName**  
    要使用的自定义 tk2d 字体。请把它包含于 FontAssetBundle。
 
-5. **RegexForDfTokenizer**  
-   用于 df 生成 token 的正则表达式。token 用于处理文本的自动换行位置。如每个字换行还是单词后换行。参考默认样例填写。建议只修改 Text 相关内容。样例RegexForDfTokenizer正则表达式：`(?<StartTag>\[(?<StartTagName>(color|sprite))\s*(?<AttributeValue>[^\]\s]+)?\])|(?<EndTag>\[\/(?<EndTagName>color|sprite)\])|(?<Newline>\r?\n)|(?<Whitespace>\s+)|(?<Text>[a-zA-Z0-9]+|.)`
+5. **OverrideDfTokenizer**  
+   覆盖的Df分词器。Token可以用于处理文本的自动换行位置。如每个字换行还是单词后换行。
 
-    - **StartTag**：Tag 起始。
-    - **TagName**：Tag 名称。
-    - **AttributeValue**：Tag 属性值。
-    - **EndTag**：Tag 结束。
-    - **Newline**：换行。
-    - **Whitespace**：空格。
-    - **Text**：一个不可在中间换行的最小文本块。换行只能出现在它的后方。
+6. **RegexForDfTokenizer**  
+   用于 Df 生成 token 的正则表达式。换行只能出现在它的后方。只在 OverrideDfTokenizer为CustomRegex 时生效。样例 RegexForDfTokenizer 正则表达式： `[a-zA-Z0-9]+|.`
 
-6. **DfTextScaleExpandThreshold**  
+7. **DfTextScaleExpandThreshold**  
    低于这个值的 Df TextScale 会被扩大。为负表示不生效。
 
-7. **DfTextScaleExpandToValue**  
+8. **DfTextScaleExpandToValue**  
    低于门槛的 Df TextScale 被扩大到多少。
 
 ### 请求字符数 Requested Character Count
@@ -164,25 +167,28 @@ Setting **RegexForFullTextNeedToTranslate**, **RegexForEachLineNeedToTranslate**
 1. **TranslateTextsOfItemTipsMod**  
    翻译 ItemTipsMod 中的文本。
 
-2. **RegexForItemTipsModTokenizer**  
-   用于 ItemTipsMod 生成 token 的正则表达式。token 用于处理文本的自动换行位置。如每个字换行还是单词后换行。样例 RegexForItemTipsModTokenizer 正则表达式：`(?:<color=[^>]+?>|</color>|[a-zA-Z0-9]+|\s+|.)`
+2. **OverrideItemTipsTokenizer**  
+   覆盖的 ItemTips 分词器。Token 可以用于处理文本的自动换行位置。如每个字换行还是单词后换行。
+
+3. **RegexForItemTipsModTokenizer**  
+   用于 ItemTips 生成 token 的正则表达式。只在 OverrideItemTipsTokenizer 为 CustomRegex 时生效。样例 RegexForItemTipsModTokenizer 正则表达式： `(?:<color=[^>]+?>|</color>|[a-zA-Z0-9]+|\s+|.)`
    
-3. **ItemTipsFontScale**  
+4. **ItemTipsFontScale**  
    ItemTips的字体缩放大小。
    
-4. **ItemTipsBackgroundWidthScale**  
+5. **ItemTipsBackgroundWidthScale**  
    ItemTips的背景宽度缩放大小。
    
-5. **ItemTipsLineHeightScale**  
+6. **ItemTipsLineHeightScale**  
    ItemTips的行高缩放大小。
    
-6. **ItemTipsAnchor**  
+7. **ItemTipsAnchor**  
    用空格或逗号分隔的一个二维向量，决定ItemTips相对于父级的锚点位置。左上角为0 0，右下角是1 1。
    
-7. **ItemTipsPivot**  
+8. **ItemTipsPivot**  
    用空格或逗号分隔的一个二维向量，定义ItemTips的定位基准点。左上角为0 0，右下角是1 1。
    
-8. **ItemTipsSourceBitmapFontBaseLine**  
+9. **ItemTipsSourceBitmapFontBaseLine**  
    ItemTips的字体如果由位图字体生成，可以在此控制位图字体的基准线。
 
 ## **4. Detailed Description of AutoTranslate Features**
@@ -201,40 +207,49 @@ Load the translation cache from \[cache_json_name\], which defaults to CachedTra
 2. **ToggleTranslationKeyBinding**  
    The key binding of toggling translation.
 
-3. **RegexForFullTextNeedToTranslate**  
-   A regular expression that matches multiline text. If the expression evaluates to true, the entire multiline text will be preserved for translation. This helps filter out unnecessary translation requests and save tranlation quotas. Example RegexForFullTextNeedToTranslate regex: `^(?!Enter the Gungeon).*$`
+3. **FilterForFullTextNeedToTranslate**  
+   Effective for the full text. Used to filter the text to be translated to save translation quotas.
 
-4. **RegexForEachLineNeedToTranslate**  
-   A regular expression that checks each line in multiline text. If any line matches, the whole multiline text will be preserved for translation. This also helps filter out unnecessary translation requests and save tranlation quotas. Example RegexForEachLineNeedToTranslate regex (fit for Chinese): `^(?![@#])(?=\S)(?!^[\d\p{P}]+$)(?!.*[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]).*$`
+4. **RegexForFullTextNeedToTranslate**  
+   Regular expression, if a multiple line text matches true, then this multiple line text is retained for translation. Only effective when FilterForFullTextNeedToTranslate is set to CustomRegex. Example RegexForFullTextNeedToTranslate regex: `^(?!Enter the Gungeon).*$`
 
-5. **RegexForIgnoredSubstringWithinText**  
-   A regular expression that matches substrings within text that should be ignored. Please use non-capturing groups. This typically includes elements like special image tags or escape sequences that need custom handling. Example RegexForIgnoredSubstringWithinText regex (fit for Chinese): `(?:\[color\s+[^\]]+\])|(?:\[sprite\s+[^\]]+\])|(?:\[/color\])|(?:\{[^}]*\})|(?:\^[\w\d]{9})|(?:[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]+)|(?:<color=[^>]+>)|(?:</color>)|(?:^\s*[\d\p{P}]+\s*$)|(?:[<>\[\]])|(?:@[a-fA-F0-9]{6})`
+5. **FilterForEachLineNeedToTranslate**  
+   Effective for each line of text. Used to filter the text to be translated to save translation quotas.
 
-6. **MaxBatchCharacterCount**  
+6. **RegexForEachLineNeedToTranslate**  
+   Regular expression, if there is a matching line in multiple lines of text, the entire multiple lines of text are retained for translation. Only effective when FilterForEachLineNeedToTranslate is set to CustomRegex. Example RegexForEachLineNeedToTranslate regex (fit for Chinese): `^(?![@#])(?=\S)(?!^[\d\p{P}]+$)(?!.*[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]).*$`
+
+7. **FilterForIgnoredSubstringWithinText**  
+   Used to filter sub texts that need to be ignored in the text. This usually includes some textures and escape characters that require special handling.
+
+8. **RegexForIgnoredSubstringWithinText**  
+   Regular expression, matching sub texts that need to be ignored in the text. Please use non capture groups. Only effective when FilterForIgnoredSubstringWithinText is set to CustomRegex. Example RegexForIgnoredSubstringWithinText regex (fit for Chinese): `(?:\[color\s+[^\]]+\])|(?:\[sprite\s+[^\]]+\])|(?:\[/color\])|(?:\{[^}]*\})|(?:\^[\w\d]{9})|(?:[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]+)|(?:<color=[^>]+>)|(?:</color>)|(?:^\s*[\d\p{P}]+\s*$)|(?:[<>\[\]])|(?:@[a-fA-F0-9]{6})`
+
+9. **MaxBatchCharacterCount**  
    The maximum count of batch data characters for processing. If the translation API prompts that a single request is too long, please reduce this value.
 
-7. **MaxBatchTextCount**  
+10. **MaxBatchTextCount**  
    The maximum count of batch data texts for processing. A value of 0 indicates no restriction.
 
-8. **MaxRetryCount**  
+11. **MaxRetryCount**  
    The maximum number of retry attempts when an error occurs during a translation request.
 
-9. **RetryInterval**  
+12. **RetryInterval**  
    The interval of retries when an error occurs.
 
-10. **TranslationCacheCapacity**  
+13. **TranslationCacheCapacity**  
    The maximum cache size for storing translations.
 
-11. **PresetTranslations**  
+14. **PresetTranslations**  
    The file name for preset translations. Use preset translation to reduce translation requests for common text during loading, leaving blank to indicate not using. The preset translation is a JSON file located in the same directory as the DLL. Separated by ';', files will be loaded sequentially.
 
-12. **CachedTranslations**  
+15. **CachedTranslations**  
    The file name cached translations. The preset translation is a JSON file located in the same directory as the DLL.
 
-13. **AutoSaveCachedTranslationsUponQuit**  
+16. **AutoSaveCachedTranslationsUponQuit**  
    Whether to automatically save cached translations upon quit. It will not take effect when quiting abnormally.
 
-14. **LogRequestedTexts**  
+17. **LogRequestedTexts**  
    Whether to log the text requested for translation.
 
 ### Font
@@ -251,21 +266,16 @@ Load the translation cache from \[cache_json_name\], which defaults to CachedTra
 4. **CustomTk2dFontName**  
    The name of the custom tk2d font to use. Include it within the FontAssetBundle.
 
-5. **RegexForDfTokenizer**  
-   A regular expression used to generate tokens for the DF tokenizer. Tokens help control the automatic line breaks for text. For example, whether to break lines after each character or after each word. Refer to the default example and modify mainly the text-related components. Example RegexForDfTokenizer regex: `(?<StartTag>\[(?<StartTagName>(color|sprite))\s*(?<AttributeValue>[^\]\s]+)?\])|(?<EndTag>\[\/(?<EndTagName>color|sprite)\])|(?<Newline>\r?\n)|(?<Whitespace>\s+)|(?<Text>[a-zA-Z0-9]+|.)`
+5. **OverrideDfTokenizer**  
+   Override Df tokenizer. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word.
 
-    - **StartTag**: The start of a tag.
-    - **TagName**: The name of the tag.
-    - **AttributeValue**: The value of the tag attribute.
-    - **EndTag**: The end of a tag.
-    - **Newline**: A newline character.
-    - **Whitespace**: Spaces or tabs.
-    - **Text**: The smallest text block that cannot break in the middle; line breaks can only occur after it.
+6. **RegexForDfTokenizer**  
+   A regular expression used for generating tokens for Df. Only effective when OverrideDfTokenizer is set to CustomRegex. Example RegexForDfTokenizer regex: `[a-zA-Z0-9]+|.`
 
-6. **DfTextScaleExpandThreshold**  
+7. **DfTextScaleExpandThreshold**  
    Df TextScale below this value will be expanded. Negative indicates non effectiveness.
 
-7. **DfTextScaleExpandToValue**  
+8. **DfTextScaleExpandToValue**  
    How much is the Df TextScale below the threshold expanded to.
 
 ### Requested Character Count
@@ -291,25 +301,28 @@ Load the translation cache from \[cache_json_name\], which defaults to CachedTra
 1. **TranslateTextsOfItemTipsMod**  
    Translate the text within the ItemTipsMod.
 
-2. **RegexForItemTipsModTokenizer**  
-   A regular expression used for generating tokens from ItemTipsMod. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word. Example RegexForItemTipsModTokenizer regex: `(?:<color=[^>]+?>|</color>|[a-zA-Z0-9]+|\s+|.)`
+2. **OverrideItemTipsTokenizer**  
+   Override ItemTips tokenizer. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word.
 
-3. **ItemTipsFontScale**  
+3. **RegexForItemTipsModTokenizer**  
+   A regular expression used for generating tokens for ItemTips. Only effective when OverrideItemTipsTokenizer is set to CustomRegex. Example RegexForItemTipsModTokenizer regex: `(?:<color=[^>]+?>|</color>|[a-zA-Z0-9]+|\s+|.)`
+
+4. **ItemTipsFontScale**  
    The font scale of ItemTips.
    
-4. **ItemTipsBackgroundWidthScale**  
+5. **ItemTipsBackgroundWidthScale**  
    The width scale of ItemTips background.
    
-5. **ItemTipsLineHeightScale**  
+6. **ItemTipsLineHeightScale**  
    The width scale of ItemTips line height.
    
-6. **ItemTipsAnchor**  
+7. **ItemTipsAnchor**  
    A two-dimensional vector separated by spaces or commas, which determines where ItemTips is anchored relative to its parent. The top left corner is 0 0, and the bottom right corner is 1 1.
    
-7. **ItemTipsPivot**  
+8. **ItemTipsPivot**  
    A two-dimensional vector separated by spaces or commas, which defines the pivot point of ItemTips for positioning. The top left corner is 0 0, and the bottom right corner is 1 1.
    
-8. **ItemTipsSourceBitmapFontBaseLine**  
+9. **ItemTipsSourceBitmapFontBaseLine**  
    If the font used by ItemTips is generated from a bitmap font, you can adjust the baseline of the bitmap font here.
 
 

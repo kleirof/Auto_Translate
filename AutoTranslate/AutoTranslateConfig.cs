@@ -7,8 +7,11 @@ namespace AutoTranslate
     {
         internal AutoTranslateModule.TranslationAPIType TranslationAPI;
         internal KeyCode ToggleTranslationKeyBinding;
+        internal AutoTranslateModule.FilterForFullTextNeedToTranslateType FilterForFullTextNeedToTranslate;
         internal string RegexForFullTextNeedToTranslate;
+        internal AutoTranslateModule.FilterForEachLineNeedToTranslateType FilterForEachLineNeedToTranslate;
         internal string RegexForEachLineNeedToTranslate;
+        internal AutoTranslateModule.FilterForIgnoredSubstringWithinTextType FilterForIgnoredSubstringWithinText;
         internal string RegexForIgnoredSubstringWithinText;
         internal int MaxBatchCharacterCount;
         internal int MaxBatchTextCount;
@@ -24,6 +27,7 @@ namespace AutoTranslate
         internal string FontAssetBundleName;
         internal string CustomDfFontName;
         internal string CustomTk2dFontName;
+        internal AutoTranslateModule.OverrideDfTokenizerType OverrideDfTokenizer;
         internal string RegexForDfTokenizer;
         internal float DfTextScaleExpandThreshold;
         internal float DfTextScaleExpandToValue;
@@ -35,6 +39,7 @@ namespace AutoTranslate
         internal string CountLabelPivot;
 
         internal bool TranslateTextsOfItemTipsMod;
+        internal AutoTranslateModule.OverrideItemTipsTokenizerType OverrideItemTipsTokenizer;
         internal string RegexForItemTipsModTokenizer;
         internal float ItemTipsFontScale;
         internal float ItemTipsBackgroundWidthScale;

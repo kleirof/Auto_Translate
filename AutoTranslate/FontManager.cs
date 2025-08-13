@@ -1,7 +1,9 @@
 ﻿using SGUI;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -17,7 +19,7 @@ namespace AutoTranslate
         public tk2dFontData tk2dFont;
         public AutoTranslateModule.OverrideFontType overrideFont;
 
-        public static string defaultRegexForTokenizer = @"(?<StartTag>\[(?<StartTagName>(color|sprite))\s*(?<AttributeValue>[^\]\s]+)?\])|(?<EndTag>\[\/(?<EndTagName>color|sprite)\])|(?<Newline>\r?\n)|(?<Whitespace>\s+)|(?<Text>[a-zA-Z0-9]+|.)";
+        public static string defaultRegexForTokenizer = @"[a-zA-Z0-9]+|.";
         public static string defaultRegexForItemTipsModTokenizer = @"(?:<color=[^>]+?>|</color>|[a-zA-Z0-9]+|\s+|.)";
 
         internal Regex DfTokenizerRegex;
@@ -49,10 +51,16 @@ namespace AutoTranslate
         {
             instance = this;
             config = AutoTranslateModule.instance.config;
-            regexForDfTokenizer = config.RegexForDfTokenizer == string.Empty ? defaultRegexForTokenizer : config.RegexForDfTokenizer;
-            regexForItemTipsModTokenizer = config.RegexForItemTipsModTokenizer == string.Empty ? defaultRegexForTokenizer : config.RegexForItemTipsModTokenizer;
-            DfTokenizerRegex = new Regex(regexForDfTokenizer, RegexOptions.Compiled | RegexOptions.Multiline);
-            ItemTipsModTokenizerRegex = new Regex(regexForItemTipsModTokenizer, RegexOptions.Compiled | RegexOptions.Multiline);
+            if (config.OverrideDfTokenizer == AutoTranslateModule.OverrideDfTokenizerType.CustomRegex)
+            {
+                regexForDfTokenizer = config.RegexForDfTokenizer == string.Empty ? defaultRegexForTokenizer : config.RegexForDfTokenizer;
+                DfTokenizerRegex = new Regex(regexForDfTokenizer, RegexOptions.Compiled | RegexOptions.Multiline);
+            }
+            if (config.OverrideItemTipsTokenizer == AutoTranslateModule.OverrideItemTipsTokenizerType.CustomRegex)
+            {
+                regexForItemTipsModTokenizer = config.RegexForItemTipsModTokenizer == string.Empty ? defaultRegexForTokenizer : config.RegexForItemTipsModTokenizer;
+                ItemTipsModTokenizerRegex = new Regex(regexForItemTipsModTokenizer, RegexOptions.Compiled | RegexOptions.Multiline);
+            }
 
             try
             {
@@ -117,52 +125,194 @@ namespace AutoTranslate
 
         public dfList<dfMarkupToken> Tokenize(string source)
         {
-            dfList<dfMarkupToken> dfList = dfList<dfMarkupToken>.Obtain();
-            dfList.EnsureCapacity(this.EstimateTokenCount(source));
-            dfList.AutoReleaseItems = true;
+            dfList<dfMarkupToken> tokens = dfList<dfMarkupToken>.Obtain();
+            tokens.EnsureCapacity(this.EstimateTokenCount(source));
+            tokens.AutoReleaseItems = true;
 
-            MatchCollection matches = DfTokenizerRegex.Matches(source);
+            int length = source.Length;
+            int index = 0;
 
-            foreach (Match match in matches)
+            while (index < length)
             {
-                if (match.Groups["StartTag"].Success)
+                char c = source[index];
+
+                if (c == '[' && index + 1 < length && source[index + 1] != '/')
                 {
-                    Capture startTagName = match.Groups["StartTagName"];
-                    Capture attributeValue = match.Groups["AttributeValue"];
+                    int tagStart = index++;
+                    int tagNameStart = index;
 
-                    dfMarkupToken token = dfMarkupToken.Obtain(source, dfMarkupTokenType.StartTag, startTagName.Index, startTagName.Index + startTagName.Length - 1);
+                    while (index < length && !char.IsWhiteSpace(source[index]) && source[index] != ']' && source[index] != '=')
+                        index++;
 
-                    if (attributeValue.Value != string.Empty)
+                    if (tagNameStart >= index)
                     {
-                        string attribute = match.Groups["AttributeValue"].Value;
-                        bool quoted = attribute.StartsWith("\"") && attribute.EndsWith("\"");
-
-                        dfMarkupToken attributeToken = dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, quoted ? attributeValue.Index + 1 : attributeValue.Index, quoted ? attributeValue.Index + attributeValue.Length - 2 : attributeValue.Index + attributeValue.Length - 1);
-
-                        token.AddAttribute(attributeToken, attributeToken);
+                        tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, tagStart, tagStart));
+                        index = tagStart + 1;
+                        continue;
                     }
-                    dfList.Add(token);
+
+                    int tagNameEnd = index - 1;
+
+                    bool isColor = (index - tagNameStart == 5 &&
+                                    string.Compare(source, tagNameStart, "color", 0, 5) == 0);
+                    bool isSprite = (index - tagNameStart == 6 &&
+                                     string.Compare(source, tagNameStart, "sprite", 0, 6) == 0);
+
+                    if (!isColor && !isSprite)
+                    {
+                        index = tagStart;
+                        continue;
+                    }
+
+                    while (index < length && char.IsWhiteSpace(source[index]))
+                        index++;
+
+                    if (index < length && source[index] == '=')
+                    {
+                        index++;
+                        while (index < length && char.IsWhiteSpace(source[index]))
+                            index++;
+                    }
+
+                    int valStart = -1, valEnd = -1;
+                    if (index < length && source[index] == '"')
+                    {
+                        index++;
+                        valStart = index;
+                        int quoteClose = source.IndexOf('"', index);
+                        if (quoteClose >= 0)
+                        {
+                            valEnd = quoteClose - 1;
+                            index = quoteClose + 1;
+                        }
+                        else
+                        {
+                            tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, tagStart, tagStart));
+                            index = tagStart + 1;
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        int vs = index;
+                        while (index < length && source[index] != ']' && !char.IsWhiteSpace(source[index]))
+                            index++;
+                        if (vs < index)
+                        {
+                            valStart = vs;
+                            valEnd = index - 1;
+                        }
+                    }
+
+                    while (index < length && source[index] != ']') index++;
+                    if (index < length && source[index] == ']') index++;
+
+                    dfMarkupToken token = dfMarkupToken.Obtain(source, dfMarkupTokenType.StartTag, tagNameStart, tagNameEnd);
+                    if (valStart != -1 && valEnd >= valStart)
+                    {
+                        dfMarkupToken attrToken = dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, valStart, valEnd);
+                        token.AddAttribute(attrToken, attrToken);
+                    }
+                    tokens.Add(token);
+                    continue;
                 }
-                else if (match.Groups["EndTag"].Success)
+
+                if (c == '[' && index + 1 < length && source[index + 1] == '/')
                 {
-                    Capture endTagName = match.Groups["EndTagName"];
-                    if (endTagName.Value != string.Empty)
-                        dfList.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.EndTag, endTagName.Index, endTagName.Index + endTagName.Length - 1));
+                    int tagStart = index;
+                    index += 2;
+
+                    int tagNameStart = index;
+                    while (index < length && source[index] != ']')
+                        index++;
+
+                    if (tagNameStart >= index)
+                    {
+                        tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, tagStart, tagStart));
+                        index = tagStart + 1;
+                        continue;
+                    }
+
+                    int tagNameEnd = index - 1;
+                    bool isColor = (index - tagNameStart == 5 &&
+                                    string.Compare(source, tagNameStart, "color", 0, 5) == 0);
+                    bool isSprite = (index - tagNameStart == 6 &&
+                                     string.Compare(source, tagNameStart, "sprite", 0, 6) == 0);
+
+                    if (!isColor && !isSprite)
+                    {
+                        index = tagStart;
+                        continue;
+                    }
+
+                    if (index < length && source[index] == ']') index++;
+
+                    tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.EndTag, tagNameStart, tagNameEnd));
+                    continue;
                 }
-                else if (match.Groups["Text"].Success)
+
+                if (c == '\r' || c == '\n')
                 {
-                    dfList.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, match.Index, match.Index + match.Length - 1));
+                    int start = index;
+                    if (c == '\r' && index + 1 < length && source[index + 1] == '\n')
+                        index += 2;
+                    else
+                        index++;
+
+                    tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Newline, start, index - 1));
+                    continue;
                 }
-                else if (match.Groups["Whitespace"].Success)
+
+                if (char.IsWhiteSpace(c))
                 {
-                    dfList.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Whitespace, match.Index, match.Index + match.Length - 1));
+                    int start = index;
+                    while (index < length && char.IsWhiteSpace(source[index]) && source[index] != '\r' && source[index] != '\n')
+                        index++;
+
+                    tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Whitespace, start, index - 1));
+                    continue;
                 }
-                else if (match.Groups["Newline"].Success)
+
+                if (config.OverrideDfTokenizer == AutoTranslateModule.OverrideDfTokenizerType.Chinese)
                 {
-                    dfList.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Newline, match.Index, match.Index + match.Length - 1));
+                    int start = index;
+                    if (c <= 0x7F && char.IsLetterOrDigit(c))
+                    {
+                        do { index++; } while (index < length && source[index] <= 0x7F && char.IsLetterOrDigit(source[index]));
+                    }
+                    else
+                    {
+                        index++;
+                    }
+                    tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, start, index - 1));
+                    continue;
+                }
+                else if (config.OverrideDfTokenizer == AutoTranslateModule.OverrideDfTokenizerType.CustomRegex)
+                {
+                    if (DfTokenizerRegex != null)
+                    {
+                        Match m = DfTokenizerRegex.Match(source, index);
+                        if (m.Success && m.Index == index)
+                        {
+                            int start = index;
+                            index += m.Length;
+                            tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, start, index - 1));
+                            continue;
+                        }
+                    }
+                    tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, index, index));
+                    index++;
+                    continue;
+                }
+                else
+                {
+                    tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, index, index));
+                    index++;
+                    continue;
                 }
             }
-            return dfList;
+
+            return tokens;
         }
 
         internal static dfFont GetGameFont()
@@ -211,18 +361,75 @@ namespace AutoTranslate
             textMesh.UpdateMaterial();
         }
 
+        public List<string> ItemTipsTokenize(string text)
+        {
+            var tokens = new List<string>();
+            int i = 0;
+            int len = text.Length;
+
+            while (i < len)
+            {
+                if (text[i] == '<')
+                {
+                    if (i + 6 < len && string.Compare(text, i, "<color=", 0, 7) == 0)
+                    {
+                        int endIdx = i + 7;
+                        while (endIdx < len && text[endIdx] != '>') endIdx++;
+                        if (endIdx < len && text[endIdx] == '>')
+                        {
+                            tokens.Add(text.Substring(i, endIdx - i + 1));
+                            i = endIdx + 1;
+                            continue;
+                        }
+                    }
+                    else if (i + 7 < len && string.Compare(text, i, "</color>", 0, 8) == 0)
+                    {
+                        tokens.Add("</color>");
+                        i += 8;
+                        continue;
+                    }
+
+                    tokens.Add(text[i].ToString());
+                    i++;
+                    continue;
+                }
+
+                if (char.IsLetterOrDigit(text[i]))
+                {
+                    int start = i;
+                    while (i < len && char.IsLetterOrDigit(text[i])) i++;
+                    tokens.Add(text.Substring(start, i - start));
+                    continue;
+                }
+
+                if (char.IsWhiteSpace(text[i]))
+                {
+                    int start = i;
+                    while (i < len && char.IsWhiteSpace(text[i])) i++;
+                    tokens.Add(text.Substring(start, i - start));
+                    continue;
+                }
+
+                tokens.Add(text[i].ToString());
+                i++;
+            }
+
+            return tokens;
+        }
+
         public string WrapText(string text, out Vector2 resultSize)
         {
-            string result = WrapTextWithTokenizer(itemTipsModuleLabel, text, ItemTipsModTokenizerRegex, itemTipsModuleFont, Mathf.RoundToInt(500 * config.ItemTipsFontScale * config.ItemTipsBackgroundWidthScale), out Vector2 sizeVector);
+            string result = WrapTextWithTokenizer(text, out Vector2 sizeVector);
             resultSize = sizeVector;
             return result;
         }
 
-        public string WrapTextWithTokenizer(SLabel sLabel, string text, Regex tokenizer, Font font, int maxWidth, out Vector2 resultSize)
+        public string WrapTextWithTokenizer(string text, out Vector2 resultSize)
         {
             wrappedLines.Clear();
 
             string[] originalLines = text.Split(newLineSymbols, StringSplitOptions.None);
+            int maxWidth = Mathf.RoundToInt(500 * config.ItemTipsFontScale * config.ItemTipsBackgroundWidthScale);
 
             foreach (string origLine in originalLines)
             {
@@ -232,21 +439,40 @@ namespace AutoTranslate
                     continue;
                 }
 
-                MatchCollection tokens = tokenizer.Matches(origLine);
-                if (tokens.Count == 0)
+                IEnumerable tokens;
+                bool isCustomRegex = config.OverrideItemTipsTokenizer == AutoTranslateModule.OverrideItemTipsTokenizerType.CustomRegex;
+                if (!isCustomRegex)
                 {
-                    wrappedLines.Add(origLine);
-                    continue;
+                    tokens = ItemTipsTokenize(origLine);
+                    if (!(tokens as List<string>).Any())
+                    {
+                        wrappedLines.Add(origLine);
+                        continue;
+                    }
+                }
+                else
+                {
+                    tokens = ItemTipsModTokenizerRegex.Matches(origLine);
+                    if ((tokens as MatchCollection).Count == 0)
+                    {
+                        wrappedLines.Add(origLine);
+                        continue;
+                    }
                 }
 
                 currentLine.Length = 0;
 
-                foreach (Match tokenMatch in tokens)
+                foreach (var tokenObject in tokens)
                 {
-                    string token = tokenMatch.Value;
-                    float tokenWidth = sLabel.Backend.MeasureText(token, null, font).x;
-                    float currentWidth = sLabel.Backend.MeasureText(currentLine.ToString(), null, font).x;
-                    float spaceWidth = sLabel.Backend.MeasureText(" ", null, font).x;
+                    string token;
+                    if (isCustomRegex)
+                        token = (tokenObject as Match).Value;
+                    else
+                        token = tokenObject as string;
+
+                    float tokenWidth = itemTipsModuleLabel.Backend.MeasureText(token, null, itemTipsModuleFont).x;
+                    float currentWidth = itemTipsModuleLabel.Backend.MeasureText(currentLine.ToString(), null, itemTipsModuleFont).x;
+                    float spaceWidth = itemTipsModuleLabel.Backend.MeasureText(" ", null, itemTipsModuleFont).x;
 
                     if (currentLine.Length > 0)
                     {
@@ -256,7 +482,7 @@ namespace AutoTranslate
                             currentLine.Length = 0;
 
                             if (tokenWidth > maxWidth)
-                                SplitAndAddToken(token, sLabel, font, maxWidth, wrappedLines);
+                                SplitAndAddToken(token, itemTipsModuleLabel, itemTipsModuleFont, maxWidth, wrappedLines);
                             else
                                 currentLine.Append(token);
                         }
@@ -266,7 +492,7 @@ namespace AutoTranslate
                     else
                     {
                         if (tokenWidth > maxWidth)
-                            SplitAndAddToken(token, sLabel, font, maxWidth, wrappedLines);
+                            SplitAndAddToken(token, itemTipsModuleLabel, itemTipsModuleFont, maxWidth, wrappedLines);
                         else
                             currentLine.Append(token);
                     }
@@ -280,11 +506,11 @@ namespace AutoTranslate
             float overallHeight = 0f;
             foreach (string line in wrappedLines)
             {
-                Vector2 lineSize = sLabel.Backend.MeasureText(line, null, font);
+                Vector2 lineSize = itemTipsModuleLabel.Backend.MeasureText(line, null, itemTipsModuleFont);
                 overallWidth = Math.Max(overallWidth, lineSize.x);
-                if (potentialItemTipsDynamicBaseFont != null && sLabel.Font is Font labelFont && labelFont == potentialItemTipsDynamicBaseFont)
+                if (potentialItemTipsDynamicBaseFont != null && itemTipsModuleLabel.Font is Font labelFont && labelFont == potentialItemTipsDynamicBaseFont)
                     overallHeight += labelFont.fontSize * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
-                else if (itemTipsModuleFont != null && sLabel.Font is Font labelFont2 && labelFont2 == itemTipsModuleFont)
+                else if (itemTipsModuleFont != null && itemTipsModuleLabel.Font is Font labelFont2 && labelFont2 == itemTipsModuleFont)
                     overallHeight += 1.1f * originalLineHeight * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
             }
             resultSize = new Vector2(overallWidth, overallHeight);

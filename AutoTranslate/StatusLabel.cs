@@ -23,7 +23,6 @@ namespace AutoTranslate
         private bool highlight = false;
 
         private AutoTranslateConfig config;
-        private static readonly Regex vector2Regex = new Regex(@"^\s*(-?\d+(\.\d+)?)\s*[, ]\s*(-?\d+(\.\d+)?)\s*$");
 
         private readonly Vector2 defaultAnchor = new Vector2(0.5f, 0f);
         private readonly Vector2 defaultPivot = new Vector2(0.5f, 0f);
@@ -121,22 +120,72 @@ namespace AutoTranslate
             Debug.Log($"请求字符计数切换为{(label.Visible ? "ON" : "OFF")}。RequestedCharacterCount toggled set to {(label.Visible ? "ON" : "OFF")}.");
         }
 
-        private static bool IsNullOrWhiteSpace(string value)
+        private static bool IsNullOrWhiteSpace(string s)
         {
-            return string.IsNullOrEmpty(value) || value.Trim().Length == 0;
+            if (string.IsNullOrEmpty(s)) return true;
+            foreach (var ch in s)
+                if (!char.IsWhiteSpace(ch))
+                    return false;
+            return true;
         }
 
         public static Vector2 ParseVector2(string input)
         {
-            if (IsNullOrWhiteSpace(input))
+            if (input == null)
                 throw new ArgumentException("输入不能为空。Input cannot be empty.");
 
-            Match match = vector2Regex.Match(input);
-            if (!match.Success)
-                throw new FormatException("输入格式不正确，应该是两个数字用空格或逗号分隔。The input format is incorrect. It should be two numbers separated by a space or comma.");
+            int len = input.Length;
+            int i = 0;
 
-            float x = float.Parse(match.Groups[1].Value);
-            float y = float.Parse(match.Groups[3].Value);
+            while (i < len && char.IsWhiteSpace(input[i])) i++;
+            if (i >= len) throw new FormatException("输入不能为空。Input cannot be empty.");
+
+            int start = i;
+            if (input[i] == '-' || input[i] == '+') i++;
+            bool hasDot = false;
+            while (i < len)
+            {
+                char c = input[i];
+                if (char.IsDigit(c)) { i++; }
+                else if (c == '.' && !hasDot) { hasDot = true; i++; }
+                else break;
+            }
+            if (i == start || (i == start + 1 && (input[start] == '-' || input[start] == '+')))
+                throw new FormatException("第一个数字不能为空。First number cannot be empty.");
+
+            float x;
+            if (!float.TryParse(input.Substring(start, i - start), out x))
+                throw new FormatException("无法解析第一个数字。Failed to parse the first number.");
+
+            while (i < len && char.IsWhiteSpace(input[i])) i++;
+
+            if (i >= len || (input[i] != ',' && !char.IsWhiteSpace(input[i])))
+                throw new FormatException("输入格式不正确，应该是两个数字用空格或逗号分隔。The input format is incorrect.");
+            i++;
+
+            while (i < len && char.IsWhiteSpace(input[i])) i++;
+            if (i >= len) throw new FormatException("第二个数字不能为空。Second number cannot be empty.");
+
+            start = i;
+            if (input[i] == '-' || input[i] == '+') i++;
+            hasDot = false;
+            while (i < len)
+            {
+                char c = input[i];
+                if (char.IsDigit(c)) { i++; }
+                else if (c == '.' && !hasDot) { hasDot = true; i++; }
+                else break;
+            }
+            if (i == start || (i == start + 1 && (input[start] == '-' || input[start] == '+')))
+                throw new FormatException("第二个数字不能为空。Second number cannot be empty.");
+
+            float y;
+            if (!float.TryParse(input.Substring(start, i - start), out y))
+                throw new FormatException("无法解析第二个数字。Failed to parse the second number.");
+
+            while (i < len && char.IsWhiteSpace(input[i])) i++;
+            if (i != len)
+                throw new FormatException("输入格式不正确，存在多余字符。Extra characters found.");
 
             return new Vector2(x, y);
         }

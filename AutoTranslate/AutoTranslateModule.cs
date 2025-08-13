@@ -15,7 +15,7 @@ namespace AutoTranslate
     {
         public const string GUID = "kleirof.etg.autotranslate";
         public const string NAME = "Auto Translate";
-        public const string VERSION = "1.0.20";
+        public const string VERSION = "1.1.0";
         public const string TEXT_COLOR = "#AA3399";
 
         internal static AutoTranslateModule instance;
@@ -23,8 +23,11 @@ namespace AutoTranslate
         private ConfigEntry<bool> AcceptedModDeclaration;
         private ConfigEntry<TranslationAPIType> TranslationAPI;
         private ConfigEntry<KeyCode> ToggleTranslationKeyBinding;
+        private ConfigEntry<FilterForFullTextNeedToTranslateType> FilterForFullTextNeedToTranslate;
         private ConfigEntry<string> RegexForFullTextNeedToTranslate;
+        private ConfigEntry<FilterForEachLineNeedToTranslateType> FilterForEachLineNeedToTranslate;
         private ConfigEntry<string> RegexForEachLineNeedToTranslate;
+        private ConfigEntry<FilterForIgnoredSubstringWithinTextType> FilterForIgnoredSubstringWithinText;
         private ConfigEntry<string> RegexForIgnoredSubstringWithinText;
         private ConfigEntry<int> MaxBatchCharacterCount;
         private ConfigEntry<int> MaxBatchTextCount;
@@ -41,6 +44,7 @@ namespace AutoTranslate
         private ConfigEntry<string> CustomDfFontName;
         private ConfigEntry<string> CustomTk2dFontName;
         private ConfigEntry<string> RegexForDfTokenizer;
+        private ConfigEntry<OverrideDfTokenizerType> OverrideDfTokenizer;
         private ConfigEntry<float> DfTextScaleExpandThreshold;
         private ConfigEntry<float> DfTextScaleExpandToValue;
 
@@ -51,6 +55,7 @@ namespace AutoTranslate
         private ConfigEntry<string> CountLabelPivot;
 
         private ConfigEntry<bool> TranslateTextsOfItemTipsMod;
+        private ConfigEntry<OverrideItemTipsTokenizerType> OverrideItemTipsTokenizer;
         private ConfigEntry<string> RegexForItemTipsModTokenizer;
         private ConfigEntry<float> ItemTipsFontScale;
         private ConfigEntry<float> ItemTipsBackgroundWidthScale;
@@ -187,25 +192,46 @@ namespace AutoTranslate
                 "启用或关闭翻译的按键。The key binding of toggling translation."
                 );
 
+            FilterForFullTextNeedToTranslate = Config.Bind(
+                "1.General",
+                "FilterForFullTextNeedToTranslate",
+                FilterForFullTextNeedToTranslateType.Chinese,
+                "对整个文本生效。用来筛选待翻译的文本以节省翻译额度。Effective for the full text. Used to filter the text to be translated to save translation quotas."
+                );
+
             RegexForFullTextNeedToTranslate = Config.Bind(
                 "1.General",
                 "RegexForFullTextNeedToTranslate",
                 @"^(?!Enter the Gungeon).*$",
-                "正则表达式，一个多行文本若匹配为真，则这个多行文本保留以待翻译。用来筛选待翻译的文本以节省翻译额度。Regular expression, if a multiple line text matches true, then this multiple line text is retained for translation. Used to filter the text to be translated to save translation quotas."
+                "正则表达式，一个多行文本若匹配为真，则这个多行文本保留以待翻译。只在FilterForFullTextNeedToTranslate为CustomRegex时生效。Regular expression, if a multiple line text matches true, then this multiple line text is retained for translation. Only effective when FilterForFullTextNeedToTranslate is set to CustomRegex."
+                );
+
+            FilterForEachLineNeedToTranslate = Config.Bind(
+                "1.General",
+                "FilterForEachLineNeedToTranslate",
+                FilterForEachLineNeedToTranslateType.Chinese,
+                "对文本的每一行生效。用来筛选待翻译的文本以节省翻译额度。Effective for each line of text. Used to filter the text to be translated to save translation quotas."
                 );
 
             RegexForEachLineNeedToTranslate = Config.Bind(
                 "1.General",
                 "RegexForEachLineNeedToTranslate",
                 @"^(?![@#])(?=\S)(?!^[\d\p{P}]+$)(?!.*[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]).*$",
-                "正则表达式，多行文本若存在一行匹配，整个多行文本保留以待翻译。用来筛选待翻译的文本以节省翻译额度。Regular expression, if there is a matching line in multiple lines of text, the entire multiple lines of text are retained for translation. Used to filter the text to be translated to save translation quotas."
+                "正则表达式，多行文本若存在一行匹配，整个多行文本保留以待翻译。只在FilterForEachLineNeedToTranslate为CustomRegex时生效。Regular expression, if there is a matching line in multiple lines of text, the entire multiple lines of text are retained for translation. Only effective when FilterForEachLineNeedToTranslate is set to CustomRegex."
+                );
+
+            FilterForIgnoredSubstringWithinText = Config.Bind(
+                "1.General",
+                "FilterForIgnoredSubstringWithinText",
+                FilterForIgnoredSubstringWithinTextType.Chinese,
+                "用来过滤文本中需要忽略的子文本。这通常包括一些要特殊处理的贴图和转义符。Used to filter sub texts that need to be ignored in the text. This usually includes some textures and escape characters that require special handling."
                 );
 
             RegexForIgnoredSubstringWithinText = Config.Bind(
                 "1.General",
                 "RegexForIgnoredSubstringWithinText",
                 @"(?:\[color\s+[^\]]+\])|(?:\[sprite\s+[^\]]+\])|(?:\[/color\])|(?:\{[^}]*\})|(?:\^[\w\d]{9})|(?:[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]+)|(?:<color=[^>]+>)|(?:</color>)|(?:^\s*[\d\p{P}]+\s*$)|(?:[<>\[\]])|(?:@[a-fA-F0-9]{6})",
-                "正则表达式，匹配文本中需要忽略的子文本。请使用非捕获组。这通常包括一些要特殊处理的贴图和转义符。Regular expression, matching sub texts that need to be ignored in the text. Please use non capture groups. This usually includes some textures and escape characters that require special handling."
+                "正则表达式，匹配文本中需要忽略的子文本。请使用非捕获组。只在FilterForIgnoredSubstringWithinText为CustomRegex时生效。Regular expression, matching sub texts that need to be ignored in the text. Please use non capture groups. Only effective when FilterForIgnoredSubstringWithinText is set to CustomRegex."
                 );
 
             MaxBatchCharacterCount = Config.Bind(
@@ -299,11 +325,18 @@ namespace AutoTranslate
                 "要使用的自定义tk2d字体。请把它包含于FontAssetBundle。The custom tk2d font to be used. Please include it in FontAssetBundle."
                 );
 
+            OverrideDfTokenizer = Config.Bind(
+                "2.Font",
+                "OverrideDfTokenizer",
+                OverrideDfTokenizerType.Chinese,
+                "覆盖的Df分词器。Token可以用于处理文本的自动换行位置。如每个字换行还是单词后换行。Override Df tokenizer. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word."
+                );
+
             RegexForDfTokenizer = Config.Bind(
                 "2.Font",
                 "RegexForDfTokenizer",
                 FontManager.defaultRegexForTokenizer,
-                "用于df生成token的正则表达式。token用于处理文本的自动换行位置。如每个字换行还是单词后换行。参考默认样例填写。建议只修改Text相关内容。A regular expression used for generating tokens from df. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word. Fill in according to the default example. Suggest only modifying content related to Text."
+                "用于Df生成token的正则表达式。只在OverrideDfTokenizer为CustomRegex时生效。A regular expression used for generating tokens for Df. Only effective when OverrideDfTokenizer is set to CustomRegex."
                 );
 
             DfTextScaleExpandThreshold = Config.Bind(
@@ -362,11 +395,18 @@ namespace AutoTranslate
                 "翻译ItemTipsMod中的文本。Translate the text in ItemTipsMod."
                 );
 
+            OverrideItemTipsTokenizer = Config.Bind(
+                "4.Compatibility",
+                "OverrideItemTipsTokenizer",
+                OverrideItemTipsTokenizerType.Chinese,
+                "覆盖的ItemTips分词器。Token可以用于处理文本的自动换行位置。如每个字换行还是单词后换行。Override ItemTips tokenizer. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word."
+                );
+
             RegexForItemTipsModTokenizer = Config.Bind(
                 "4.Compatibility",
                 "RegexForItemTipsModTokenizer",
                 FontManager.defaultRegexForItemTipsModTokenizer,
-                "用于ItemTipsMod生成token的正则表达式。token用于处理文本的自动换行位置。如每个字换行还是单词后换行。A regular expression used for generating tokens from ItemTipsMod. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word."
+                "用于ItemTips生成token的正则表达式。只在OverrideItemTipsTokenizer为CustomRegex时生效。A regular expression used for generating tokens for ItemTips. Only effective when OverrideItemTipsTokenizer is set to CustomRegex."
                 );
 
             ItemTipsFontScale = Config.Bind(
@@ -611,8 +651,11 @@ namespace AutoTranslate
             {
                 TranslationAPI = TranslationAPI.Value,
                 ToggleTranslationKeyBinding = ToggleTranslationKeyBinding.Value,
+                FilterForFullTextNeedToTranslate = FilterForFullTextNeedToTranslate.Value,
                 RegexForFullTextNeedToTranslate = RegexForFullTextNeedToTranslate.Value,
+                FilterForEachLineNeedToTranslate = FilterForEachLineNeedToTranslate.Value,
                 RegexForEachLineNeedToTranslate = RegexForEachLineNeedToTranslate.Value,
+                FilterForIgnoredSubstringWithinText = FilterForIgnoredSubstringWithinText.Value,
                 RegexForIgnoredSubstringWithinText = RegexForIgnoredSubstringWithinText.Value,
                 MaxBatchCharacterCount = MaxBatchCharacterCount.Value,
                 MaxBatchTextCount = MaxBatchTextCount.Value,
@@ -628,6 +671,7 @@ namespace AutoTranslate
                 FontAssetBundleName = FontAssetBundleName.Value,
                 CustomDfFontName = CustomDfFontName.Value,
                 CustomTk2dFontName = CustomTk2dFontName.Value,
+                OverrideDfTokenizer = OverrideDfTokenizer.Value,
                 RegexForDfTokenizer = RegexForDfTokenizer.Value,
                 DfTextScaleExpandThreshold = DfTextScaleExpandThreshold.Value,
                 DfTextScaleExpandToValue = DfTextScaleExpandToValue.Value,
@@ -639,6 +683,7 @@ namespace AutoTranslate
                 CountLabelPivot = CountLabelPivot.Value,
 
                 TranslateTextsOfItemTipsMod = TranslateTextsOfItemTipsMod.Value,
+                OverrideItemTipsTokenizer = OverrideItemTipsTokenizer.Value,
                 RegexForItemTipsModTokenizer = RegexForItemTipsModTokenizer.Value,
                 ItemTipsFontScale = ItemTipsFontScale.Value > 0 ? ItemTipsFontScale.Value : 1f,
                 ItemTipsBackgroundWidthScale = ItemTipsBackgroundWidthScale.Value > 0 ? ItemTipsBackgroundWidthScale.Value : 1f,
@@ -791,6 +836,24 @@ namespace AutoTranslate
             }
         }
 
+        public enum FilterForFullTextNeedToTranslateType
+        {
+            Chinese,
+            CustomRegex,
+        }
+
+        public enum FilterForEachLineNeedToTranslateType
+        {
+            Chinese,
+            CustomRegex,
+        }
+
+        public enum FilterForIgnoredSubstringWithinTextType
+        {
+            Chinese,
+            CustomRegex,
+        }
+
         public enum TranslationAPIType
         {
             Tencent,
@@ -809,6 +872,19 @@ namespace AutoTranslate
             Russian,
             Polish,
             Custom,
+        }
+
+        public enum OverrideDfTokenizerType
+        {
+            None,
+            Chinese,
+            CustomRegex,
+        }
+
+        public enum OverrideItemTipsTokenizerType
+        {
+            Chinese,
+            CustomRegex,
         }
 
         public enum LlmQuotePreprocessType

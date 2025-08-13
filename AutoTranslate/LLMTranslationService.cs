@@ -74,20 +74,47 @@ namespace AutoTranslate
             if (string.IsNullOrEmpty(config.LlmPositionText) || string.IsNullOrEmpty(config.LlmSegmentText))
                 throw new ArgumentException("标记不能为空。The tag cannot be empty.");
 
-            if (positionedResponseRegex == null)
+            string startTag = config.LlmPositionText;
+            string endTag = config.LlmSegmentText;
+
+            List<string> results = new List<string>();
+
+            int len = response.Length;
+            int pos = 0;
+            int startTagLen = startTag.Length;
+            int endTagLen = endTag.Length;
+
+            while (pos < len)
             {
-                string pattern = Regex.Escape(config.LlmPositionText) + @"\d+" + Regex.Escape(config.LlmSegmentText);
-                positionedResponseRegex = new Regex(pattern, RegexOptions.Compiled);
+                int matchStart = response.IndexOf(startTag, pos, StringComparison.OrdinalIgnoreCase);
+                if (matchStart == -1)
+                {
+                    string tail = response.Substring(pos);
+                    if (!IsNullOrWhiteSpace(tail))
+                        results.Add(tail.Trim());
+                    break;
+                }
+
+                if (matchStart > pos)
+                {
+                    string chunk = response.Substring(pos, matchStart - pos);
+                    if (!IsNullOrWhiteSpace(chunk))
+                        results.Add(chunk.Trim());
+                }
+
+                int i = matchStart + startTagLen;
+
+                while (i < len && response[i] >= '0' && response[i] <= '9')
+                    i++;
+
+                if (i + endTagLen <= len &&
+                    string.Compare(response, i, endTag, 0, endTagLen, StringComparison.OrdinalIgnoreCase) == 0)
+                    pos = i + endTagLen;
+                else
+                    pos = i;
             }
 
-            string[] parts = positionedResponseRegex.Split(response);
-
-            var results = parts
-                .Where(part => !IsNullOrWhiteSpace(part))
-                .Select(part => part.Trim())
-                .ToArray();
-
-            return results.Length > 0 ? results : null;
+            return results.Count > 0 ? results.ToArray() : null;
         }
 
         private static bool IsNullOrWhiteSpace(string value)
