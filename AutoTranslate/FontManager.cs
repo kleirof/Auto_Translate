@@ -160,7 +160,8 @@ namespace AutoTranslate
 
                     if (!isColor && !isSprite)
                     {
-                        index = tagStart;
+                        tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, tagStart, tagStart));
+                        index = tagStart + 1;
                         continue;
                     }
 
@@ -241,7 +242,8 @@ namespace AutoTranslate
 
                     if (!isColor && !isSprite)
                     {
-                        index = tagStart;
+                        tokens.Add(dfMarkupToken.Obtain(source, dfMarkupTokenType.Text, tagStart, tagStart));
+                        index = tagStart + 1;
                         continue;
                     }
 
@@ -292,7 +294,7 @@ namespace AutoTranslate
                     if (DfTokenizerRegex != null)
                     {
                         Match m = DfTokenizerRegex.Match(source, index);
-                        if (m.Success && m.Index == index)
+                        if (m.Success && m.Index == index && m.Length > 0)
                         {
                             int start = index;
                             index += m.Length;

@@ -1,9 +1,5 @@
 ﻿using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 using ETGGUI;
 using SGUI;
 using UnityEngine;
@@ -118,15 +114,6 @@ namespace AutoTranslate
         {
             label.Visible = !label.Visible;
             Debug.Log($"请求字符计数切换为{(label.Visible ? "ON" : "OFF")}。RequestedCharacterCount toggled set to {(label.Visible ? "ON" : "OFF")}.");
-        }
-
-        private static bool IsNullOrWhiteSpace(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return true;
-            foreach (var ch in s)
-                if (!char.IsWhiteSpace(ch))
-                    return false;
-            return true;
         }
 
         public static Vector2 ParseVector2(string input)
