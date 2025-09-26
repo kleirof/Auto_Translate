@@ -162,9 +162,9 @@ namespace AutoTranslate
         private void SetStatusLabelText()
         {
             if (exceededThreshold)
-                StatusLabelController.instance.SetText($"AT: {requestedCharacterCount}\nNow {(translateOn ? "ON" : "OFF")} ({config.ToggleTranslationKeyBinding})");
+                StatusLabelController.instance?.SetText($"AT: {requestedCharacterCount}\nNow {(translateOn ? "ON" : "OFF")} ({config.ToggleTranslationKeyBinding})");
             else
-                StatusLabelController.instance.SetText($"AT: {requestedCharacterCount}");
+                StatusLabelController.instance?.SetText($"AT: {requestedCharacterCount}");
         }
 
         private static bool FullTextFilter(string text)

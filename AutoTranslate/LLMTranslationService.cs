@@ -18,7 +18,6 @@ namespace AutoTranslate
         private StringBuilder jsonBuilder = new StringBuilder();
         private StringBuilder positionedBuilder = new StringBuilder();
         private readonly string[] cachedSplitPattern = new string[1];
-        private static Regex positionedResponseRegex;
 
         public LlmTranslationService(AutoTranslateConfig config)
         {
