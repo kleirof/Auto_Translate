@@ -246,12 +246,17 @@
     <Compile Include="AutoTranslatePatches.cs" />
     <Compile Include="AzureTranslationService.cs" />
     <Compile Include="BaiduTranslationService.cs" />
+    <Compile Include="DestroyNotifier.cs" />
     <Compile Include="ITranslationService.cs" />
     <Compile Include="LLMTranslationService.cs" />
     <Compile Include="LRUCache.cs" />
     <Compile Include="ObjectPool.cs" />
+    <Compile Include="Pools.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ReusableTextReader.cs" />
     <Compile Include="StatusLabel.cs" />
+    <Compile Include="TextObject.cs" />
+    <Compile Include="TextProcessor.cs" />
     <Compile Include="TencentTranslationService.cs" />
     <Compile Include="FontManager.cs" />
     <Compile Include="TranslationManager.cs" />

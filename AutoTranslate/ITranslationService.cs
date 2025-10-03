@@ -6,6 +6,6 @@ namespace AutoTranslate
 {
     public interface ITranslationService
     {
-        IEnumerator StartTranslation(List<string> texts, Action<string[]> callback);
+        IEnumerator StartTranslation(List<string> texts, Action<List<string>> callback);
     }
 }

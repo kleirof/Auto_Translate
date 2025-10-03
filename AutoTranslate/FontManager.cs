@@ -35,9 +35,8 @@ namespace AutoTranslate
         internal Font potentialItemTipsDynamicBaseFont;
         internal string itemTipsModuleText;
 
-        private StringBuilder currentLine = new StringBuilder();
-        private List<string> wrappedLines = new List<string>();
-        private string[] newLineSymbols = new string[] { "\r\n", "\n" };
+        private StringBuilder currentLine = new StringBuilder(256);
+        private List<string> wrappedLines = new List<string>(128);
 
         internal readonly Vector2 itemTipsDefaultAnchor = new Vector2(0.1f, 0.5f);
         internal readonly Vector2 itemTipsDefaultPivot = new Vector2(0f, 0.5f);
@@ -46,6 +45,7 @@ namespace AutoTranslate
         internal Vector2 itemTipsPivot;
 
         internal int originalLineHeight;
+        private StringBuilder tokenBuilder = new StringBuilder(256);
 
         public FontManager()
         {
@@ -154,9 +154,9 @@ namespace AutoTranslate
                     int tagNameEnd = index - 1;
 
                     bool isColor = (index - tagNameStart == 5 &&
-                                    string.Compare(source, tagNameStart, "color", 0, 5) == 0);
+                                    TextProcessor.StartsWithString(source, tagNameStart, "color"));
                     bool isSprite = (index - tagNameStart == 6 &&
-                                     string.Compare(source, tagNameStart, "sprite", 0, 6) == 0);
+                                     TextProcessor.StartsWithString(source, tagNameStart, "sprite"));
 
                     if (!isColor && !isSprite)
                     {
@@ -180,7 +180,7 @@ namespace AutoTranslate
                     {
                         index++;
                         valStart = index;
-                        int quoteClose = source.IndexOf('"', index);
+                        int quoteClose = TextProcessor.IndexOfChar(source, '"', index);
                         if (quoteClose >= 0)
                         {
                             valEnd = quoteClose - 1;
@@ -236,9 +236,9 @@ namespace AutoTranslate
 
                     int tagNameEnd = index - 1;
                     bool isColor = (index - tagNameStart == 5 &&
-                                    string.Compare(source, tagNameStart, "color", 0, 5) == 0);
+                                    TextProcessor.StartsWithString(source, tagNameStart, "color"));
                     bool isSprite = (index - tagNameStart == 6 &&
-                                     string.Compare(source, tagNameStart, "sprite", 0, 6) == 0);
+                                     TextProcessor.StartsWithString(source, tagNameStart, "sprite"));
 
                     if (!isColor && !isSprite)
                     {
@@ -365,58 +365,80 @@ namespace AutoTranslate
 
         public List<string> ItemTipsTokenize(string text)
         {
-            var tokens = new List<string>();
-            int i = 0;
-            int len = text.Length;
+            List<string> tokens = Pools.listStringPool.Get();
 
-            while (i < len)
+            try
             {
-                if (text[i] == '<')
+                int i = 0;
+                int len = text.Length;
+
+                while (i < len)
                 {
-                    if (i + 6 < len && string.Compare(text, i, "<color=", 0, 7) == 0)
+                    if (text[i] == '<')
                     {
-                        int endIdx = i + 7;
-                        while (endIdx < len && text[endIdx] != '>') endIdx++;
-                        if (endIdx < len && text[endIdx] == '>')
+                        if (i + 6 < len && TextProcessor.StartsWithString(text, i, "<color="))
                         {
-                            tokens.Add(text.Substring(i, endIdx - i + 1));
-                            i = endIdx + 1;
+                            int endIdx = i + 7;
+                            while (endIdx < len && text[endIdx] != '>') endIdx++;
+                            if (endIdx < len && text[endIdx] == '>')
+                            {
+                                tokenBuilder.Length = 0;
+                                for (int j = i; j <= endIdx; j++)
+                                {
+                                    tokenBuilder.Append(text[j]);
+                                }
+                                tokens.Add(tokenBuilder.ToString());
+                                i = endIdx + 1;
+                                continue;
+                            }
+                        }
+                        else if (i + 7 < len && TextProcessor.StartsWithString(text, i, "</color>"))
+                        {
+                            tokens.Add("</color>");
+                            i += 8;
                             continue;
                         }
+
+                        tokens.Add(text[i].ToString());
+                        i++;
+                        continue;
                     }
-                    else if (i + 7 < len && string.Compare(text, i, "</color>", 0, 8) == 0)
+
+                    if (char.IsLetterOrDigit(text[i]))
                     {
-                        tokens.Add("</color>");
-                        i += 8;
+                        tokenBuilder.Length = 0;
+                        while (i < len && char.IsLetterOrDigit(text[i]))
+                        {
+                            tokenBuilder.Append(text[i]);
+                            i++;
+                        }
+                        tokens.Add(tokenBuilder.ToString());
+                        continue;
+                    }
+
+                    if (char.IsWhiteSpace(text[i]))
+                    {
+                        tokenBuilder.Length = 0;
+                        while (i < len && char.IsWhiteSpace(text[i]))
+                        {
+                            tokenBuilder.Append(text[i]);
+                            i++;
+                        }
+                        tokens.Add(tokenBuilder.ToString());
                         continue;
                     }
 
                     tokens.Add(text[i].ToString());
                     i++;
-                    continue;
                 }
 
-                if (char.IsLetterOrDigit(text[i]))
-                {
-                    int start = i;
-                    while (i < len && char.IsLetterOrDigit(text[i])) i++;
-                    tokens.Add(text.Substring(start, i - start));
-                    continue;
-                }
-
-                if (char.IsWhiteSpace(text[i]))
-                {
-                    int start = i;
-                    while (i < len && char.IsWhiteSpace(text[i])) i++;
-                    tokens.Add(text.Substring(start, i - start));
-                    continue;
-                }
-
-                tokens.Add(text[i].ToString());
-                i++;
+                return tokens;
             }
-
-            return tokens;
+            catch (Exception)
+            {
+                Pools.listStringPool.Return(tokens);
+                throw;
+            }
         }
 
         public string WrapText(string text, out Vector2 resultSize)
@@ -430,108 +452,188 @@ namespace AutoTranslate
         {
             wrappedLines.Clear();
 
-            string[] originalLines = text.Split(newLineSymbols, StringSplitOptions.None);
-            int maxWidth = Mathf.RoundToInt(500 * config.ItemTipsFontScale * config.ItemTipsBackgroundWidthScale);
-
-            foreach (string origLine in originalLines)
+            List<string> originalLines = Pools.listStringPool.Get();
+            try
             {
-                if (string.IsNullOrEmpty(origLine))
-                {
-                    wrappedLines.Add("");
-                    continue;
-                }
+                SplitTextIntoLines(text, originalLines);
+                int maxWidth = Mathf.RoundToInt(500 * config.ItemTipsFontScale * config.ItemTipsBackgroundWidthScale);
 
-                IEnumerable tokens;
-                bool isCustomRegex = config.OverrideItemTipsTokenizer == AutoTranslateModule.OverrideItemTipsTokenizerType.CustomRegex;
-                if (!isCustomRegex)
+                foreach (string origLine in originalLines)
                 {
-                    tokens = ItemTipsTokenize(origLine);
-                    if (!(tokens as List<string>).Any())
+                    if (string.IsNullOrEmpty(origLine))
                     {
-                        wrappedLines.Add(origLine);
+                        wrappedLines.Add("");
                         continue;
                     }
-                }
-                else
-                {
-                    tokens = ItemTipsModTokenizerRegex.Matches(origLine);
-                    if ((tokens as MatchCollection).Count == 0)
+
+                    IEnumerable tokens;
+                    bool isCustomRegex = config.OverrideItemTipsTokenizer == AutoTranslateModule.OverrideItemTipsTokenizerType.CustomRegex;
+                    if (!isCustomRegex)
                     {
-                        wrappedLines.Add(origLine);
-                        continue;
-                    }
-                }
-
-                currentLine.Length = 0;
-
-                foreach (var tokenObject in tokens)
-                {
-                    string token;
-                    if (isCustomRegex)
-                        token = (tokenObject as Match).Value;
-                    else
-                        token = tokenObject as string;
-
-                    float tokenWidth = itemTipsModuleLabel.Backend.MeasureText(token, null, itemTipsModuleFont).x;
-                    float currentWidth = itemTipsModuleLabel.Backend.MeasureText(currentLine.ToString(), null, itemTipsModuleFont).x;
-                    float spaceWidth = itemTipsModuleLabel.Backend.MeasureText(" ", null, itemTipsModuleFont).x;
-
-                    if (currentLine.Length > 0)
-                    {
-                        if (currentWidth + spaceWidth + tokenWidth > maxWidth)
+                        tokens = ItemTipsTokenize(origLine);
+                        if (!(tokens as List<string>).Any())
                         {
-                            wrappedLines.Add(currentLine.ToString());
-                            currentLine.Length = 0;
+                            wrappedLines.Add(origLine);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        tokens = ItemTipsModTokenizerRegex.Matches(origLine);
+                        if ((tokens as MatchCollection).Count == 0)
+                        {
+                            wrappedLines.Add(origLine);
+                            continue;
+                        }
+                    }
 
+                    currentLine.Length = 0;
+
+                    foreach (var tokenObject in tokens)
+                    {
+                        string token;
+                        if (isCustomRegex)
+                            token = (tokenObject as Match).Value;
+                        else
+                            token = tokenObject as string;
+
+                        float tokenWidth = itemTipsModuleLabel.Backend.MeasureText(token, null, itemTipsModuleFont).x;
+                        float currentWidth = itemTipsModuleLabel.Backend.MeasureText(currentLine.ToString(), null, itemTipsModuleFont).x;
+                        float spaceWidth = itemTipsModuleLabel.Backend.MeasureText(" ", null, itemTipsModuleFont).x;
+
+                        if (currentLine.Length > 0)
+                        {
+                            if (currentWidth + spaceWidth + tokenWidth > maxWidth)
+                            {
+                                wrappedLines.Add(currentLine.ToString());
+                                currentLine.Length = 0;
+
+                                if (tokenWidth > maxWidth)
+                                    SplitAndAddToken(token, itemTipsModuleLabel, itemTipsModuleFont, maxWidth, wrappedLines);
+                                else
+                                    currentLine.Append(token);
+                            }
+                            else
+                                currentLine.Append(token);
+                        }
+                        else
+                        {
                             if (tokenWidth > maxWidth)
                                 SplitAndAddToken(token, itemTipsModuleLabel, itemTipsModuleFont, maxWidth, wrappedLines);
                             else
                                 currentLine.Append(token);
                         }
-                        else
-                            currentLine.Append(token);
+                    }
+
+                    if (currentLine.Length > 0)
+                        wrappedLines.Add(currentLine.ToString());
+                }
+
+                float overallWidth = 0f;
+                float overallHeight = 0f;
+                foreach (string line in wrappedLines)
+                {
+                    Vector2 lineSize = itemTipsModuleLabel.Backend.MeasureText(line, null, itemTipsModuleFont);
+                    overallWidth = Math.Max(overallWidth, lineSize.x);
+                    if (potentialItemTipsDynamicBaseFont != null && itemTipsModuleLabel.Font is Font labelFont && labelFont == potentialItemTipsDynamicBaseFont)
+                        overallHeight += labelFont.fontSize * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
+                    else if (itemTipsModuleFont != null && itemTipsModuleLabel.Font is Font labelFont2 && labelFont2 == itemTipsModuleFont)
+                        overallHeight += 1.1f * originalLineHeight * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
+                }
+                resultSize = new Vector2(overallWidth, overallHeight);
+
+                return string.Join("\n", wrappedLines.ToArray());
+            }
+            finally
+            {
+                Pools.listStringPool.Return(originalLines);
+            }
+        }
+
+        private void SplitTextIntoLines(string text, List<string> outputLines)
+        {
+            outputLines.Clear();
+
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            int start = 0;
+            int length = text.Length;
+
+            for (int i = 0; i < length; i++)
+            {
+                char c = text[i];
+
+                if (c == '\n')
+                {
+                    int lineLength = i - start;
+                    if (lineLength > 0)
+                    {
+                        outputLines.Add(text.Substring(start, lineLength));
                     }
                     else
                     {
-                        if (tokenWidth > maxWidth)
-                            SplitAndAddToken(token, itemTipsModuleLabel, itemTipsModuleFont, maxWidth, wrappedLines);
-                        else
-                            currentLine.Append(token);
+                        outputLines.Add("");
                     }
+                    start = i + 1;
                 }
+                else if (c == '\r')
+                {
+                    int lineLength = i - start;
+                    if (lineLength > 0)
+                    {
+                        outputLines.Add(text.Substring(start, lineLength));
+                    }
+                    else
+                    {
+                        outputLines.Add("");
+                    }
 
-                if (currentLine.Length > 0)
-                    wrappedLines.Add(currentLine.ToString());
+                    if (i + 1 < length && text[i + 1] == '\n')
+                    {
+                        i++;
+                    }
+                    start = i + 1;
+                }
             }
 
-            float overallWidth = 0f;
-            float overallHeight = 0f;
-            foreach (string line in wrappedLines)
+            if (start < length)
             {
-                Vector2 lineSize = itemTipsModuleLabel.Backend.MeasureText(line, null, itemTipsModuleFont);
-                overallWidth = Math.Max(overallWidth, lineSize.x);
-                if (potentialItemTipsDynamicBaseFont != null && itemTipsModuleLabel.Font is Font labelFont && labelFont == potentialItemTipsDynamicBaseFont)
-                    overallHeight += labelFont.fontSize * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
-                else if (itemTipsModuleFont != null && itemTipsModuleLabel.Font is Font labelFont2 && labelFont2 == itemTipsModuleFont)
-                    overallHeight += 1.1f * originalLineHeight * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
+                outputLines.Add(text.Substring(start, length - start));
             }
-            resultSize = new Vector2(overallWidth, overallHeight);
-
-            return string.Join("\n", wrappedLines.ToArray());
+            else if (start == length && length > 0)
+            {
+                outputLines.Add("");
+            }
         }
 
         private static void SplitAndAddToken(string token, SLabel sLabel, Font font, int maxWidth, List<string> wrappedLines)
         {
             int startIndex = 0;
-            while (startIndex < token.Length)
+            int tokenLength = token.Length;
+
+            while (startIndex < tokenLength)
             {
-                int length = 1;
-                while (startIndex + length <= token.Length &&
-                       sLabel.Backend.MeasureText(token.Substring(startIndex, length), null, font).x <= maxWidth)
+                int low = 1;
+                int high = Math.Min(tokenLength - startIndex, 100);
+
+                while (low <= high)
                 {
-                    length++;
+                    int mid = (low + high) / 2;
+                    string testText = token.Substring(startIndex, mid);
+                    float width = sLabel.Backend.MeasureText(testText, null, font).x;
+
+                    if (width <= maxWidth)
+                    {
+                        low = mid + 1;
+                    }
+                    else
+                    {
+                        high = mid - 1;
+                    }
                 }
-                length = Math.Max(1, length - 1);
+
+                int length = Math.Max(1, high);
                 string part = token.Substring(startIndex, length);
                 wrappedLines.Add(part);
                 startIndex += length;

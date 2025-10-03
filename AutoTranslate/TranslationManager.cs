@@ -29,8 +29,8 @@ namespace AutoTranslate
         private HashSet<string> batchUniqueSubTexts;
         private List<string> batchTranslatedParts;
         private List<string> uniqueTexts;
-        private Dictionary<string, List<object>> textControlMap;
-        private Dictionary<object, List<string>> controlTextMap;
+        private Dictionary<string, List<TextObject>> textControlMap;
+        private Dictionary<TextObject, List<string>> controlTextMap;
 
         private Regex fullTextRegex;
         private Regex eachLineRegex;
@@ -49,9 +49,10 @@ namespace AutoTranslate
 
         private List<string> finalChunks;
 
-        private ObjectPool<List<string>> listStringPool;
-        private ObjectPool<List<object>> listObjectPool;
-        private ObjectPool<TranslationQueueElement> translationQueueElementPool;
+        private StringBuilder resultBuilder;
+
+        private string cachedString;
+        private TextObject cachedObject;
 
         public void Update()
         {
@@ -91,7 +92,7 @@ namespace AutoTranslate
             {
                 var paths = config.PresetTranslations
                     .Split(semicolon, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => p.Trim())
+                    .Select(p => TextProcessor.TrimOnlyIfNeeded(p))
                     .Where(p => !string.IsNullOrEmpty(p));
 
                 foreach (var relativePath in paths)
@@ -129,20 +130,19 @@ namespace AutoTranslate
                     ignoredSubstringWithinTextRegex = new Regex(config.RegexForIgnoredSubstringWithinText, RegexOptions.Multiline | RegexOptions.Compiled);
             }
 
-            batchSubTexts = new List<string>();
-            batchSplitMap = new Dictionary<string, List<string>>();
-            batchTranslationDictionary = new Dictionary<string, string>();
+            batchSubTexts = new List<string>(128);
+            batchSplitMap = new Dictionary<string, List<string>>(128);
+            batchTranslationDictionary = new Dictionary<string, string>(128);
             batchUniqueSubTexts = new HashSet<string>();
-            batchTranslatedParts = new List<string>();
-            uniqueTexts = new List<string>();
-            textControlMap = new Dictionary<string, List<object>>();
-            translatedTextBuilder = new StringBuilder();
-            controlTextMap = new Dictionary<object, List<string>>();
+            batchTranslatedParts = new List<string>(128);
+            uniqueTexts = new List<string>(128);
+            textControlMap = new Dictionary<string, List<TextObject>>(128);
+            translatedTextBuilder = new StringBuilder(256);
+            controlTextMap = new Dictionary<TextObject, List<string>>(128);
 
-            finalChunks = new List<string>();
-            listStringPool = new ObjectPool<List<string>>(() => new List<string>(), 64, list => list.Clear());
-            listObjectPool = new ObjectPool<List<object>>(() => new List<object>(), 64, list => list.Clear());
-            translationQueueElementPool = new ObjectPool<TranslationQueueElement>(() => new TranslationQueueElement(), 64, element => element.Reset());
+            finalChunks = new List<string>(128);
+
+            resultBuilder = new StringBuilder(256);
 
             translateOn = config.isConfigValid;
         }
@@ -161,62 +161,70 @@ namespace AutoTranslate
 
         private void SetStatusLabelText()
         {
-            if (exceededThreshold)
-                StatusLabelController.instance?.SetText($"AT: {requestedCharacterCount}\nNow {(translateOn ? "ON" : "OFF")} ({config.ToggleTranslationKeyBinding})");
-            else
-                StatusLabelController.instance?.SetText($"AT: {requestedCharacterCount}");
+            StatusLabelController.instance?.SetText($"AT: {requestedCharacterCount}  Now {(translateOn ? "ON" : "OFF")} ({config.ToggleTranslationKeyBinding})");
         }
 
         private static bool FullTextFilter(string text)
         {
-            return text.StartsWith("Enter the Gungeon");
+            return TextProcessor.StartsWithString(text, 0, "Enter the Gungeon");
         }
 
-        private static bool EachLineFilter(string line)
+        private bool HasLineMatchingFilter(string text)
         {
-            if (line.Length > 0 && (line[0] == '@' || line[0] == '#'))
-                return false;
+            int lineStart = 0;
+            int length = text.Length;
 
-            bool hasNonWhiteSpace = false;
-            foreach (char c in line)
+            for (int i = 0; i <= length; i++)
             {
-                if (!char.IsWhiteSpace(c))
+                bool isLineEnd = i == length || text[i] == '\n' || text[i] == '\r';
+
+                if (isLineEnd && i > lineStart)
                 {
-                    hasNonWhiteSpace = true;
-                    break;
+                    if (CheckLineSegment(text, lineStart, i - lineStart))
+                        return true;
+                }
+
+                if (isLineEnd && i < length)
+                {
+                    if (text[i] == '\r' && i + 1 < length && text[i + 1] == '\n')
+                        i++;
+
+                    lineStart = i + 1;
                 }
             }
-            if (!hasNonWhiteSpace)
+
+            return false;
+        }
+
+        private static bool CheckLineSegment(string text, int start, int length)
+        {
+            if (length > 0 && (text[start] == '@' || text[start] == '#'))
                 return false;
 
-            bool allDigitOrPunct = true;
-            foreach (char c in line)
-            {
-                if (!char.IsDigit(c) && !char.IsPunctuation(c))
-                {
-                    allDigitOrPunct = false;
-                    break;
-                }
-            }
-            if (allDigitOrPunct)
-                return false;
+            bool foundValidChar = false;
 
-            foreach (char c in line)
+            for (int i = 0; i < length; i++)
             {
-                if ((c >= '\u4e00' && c <= '\u9fa5') ||
-                    (c >= '\u3000' && c <= '\u303F') ||
-                    (c >= '\uFF00' && c <= '\uFFEF'))
-                {
+                char c = text[start + i];
+
+                if (char.IsWhiteSpace(c))
+                    continue;
+
+                if (TextProcessor.IsChineseChar(c))
                     return false;
-                }
+
+                if (char.IsDigit(c) || char.IsPunctuation(c))
+                    continue;
+
+                foundValidChar = true;
             }
 
-            return true;
+            return foundValidChar;
         }
 
         private bool NeedToTranslate(string text)
         {
-            if (IsNullOrWhiteSpace(text))
+            if (TextProcessor.IsNullOrWhiteSpace(text))
                 return false;
 
             if (config.FilterForFullTextNeedToTranslate == AutoTranslateModule.FilterForFullTextNeedToTranslateType.CustomRegex)
@@ -246,13 +254,7 @@ namespace AutoTranslate
             }
             else
             {
-                string[] lines = text.Split(newLineSymbols, StringSplitOptions.None);
-                foreach (string line in lines)
-                {
-                    if (EachLineFilter(line))
-                        return true;
-                }
-                return false;
+                return HasLineMatchingFilter(text);
             }
             return true;
         }
@@ -291,11 +293,11 @@ namespace AutoTranslate
             {
                 var translationRequest = translationQueue.Peek();
                 string text = translationRequest.text;
-                object control = translationRequest.control;
+                TextObject textObject = translationRequest.textObject;
 
-                if (IsNullOrWhiteSpace(text))
+                if (TextProcessor.IsNullOrWhiteSpace(text))
                 {
-                    translationQueueElementPool.Return(translationQueue.Dequeue());
+                    translationQueue.Dequeue();
                     continue;
                 }
 
@@ -304,21 +306,30 @@ namespace AutoTranslate
                     break;
                 }
 
+                int totalRemoveLength = 0;
                 foreach (var uniqueText in uniqueTexts)
                 {
-                    if (text.StartsWith(uniqueText) && !text.Equals(uniqueText) && textControlMap.TryGetValue(text, out List<object> list) && list.Contains(control))
-                        text = text.Substring(uniqueText.Length);
+                    if (TextProcessor.StartsWithString(text, totalRemoveLength, uniqueText) &&
+                        totalRemoveLength + uniqueText.Length < text.Length &&
+                        textControlMap.TryGetValue(text, out var list) &&
+                        list.Contains(textObject))
+                    {
+                        totalRemoveLength += uniqueText.Length;
+                    }
                 }
+
+                if (totalRemoveLength > 0)
+                    text = text.Substring(totalRemoveLength);
 
                 if (!textControlMap.ContainsKey(text))
                 {
                     uniqueTexts.Add(text);
                     totalCharacterCount += text.Length;
-                    textControlMap[text] = listObjectPool.Get();
+                    textControlMap[text] = Pools.listTextObjectPool.Get();
                 }
-                textControlMap[text].Add(control);
+                textControlMap[text].Add(textObject);
 
-                translationQueueElementPool.Return(translationQueue.Dequeue());
+                translationQueue.Dequeue();
 
                 if (config.MaxBatchTextCount > 0 && uniqueTexts.Count >= config.MaxBatchTextCount)
                 {
@@ -327,73 +338,59 @@ namespace AutoTranslate
             }
         }
 
-        public static List<string> SubstringFilter(string text, bool keepMatches)
+        private static void AddSegIfNotEmpty(List<string> outlist, string text, int start, int end)
         {
-            var parts = new List<string>();
+            if (end <= start)
+                return;
+
+            int left = start;
+            int right = end - 1;
+
+            while (left <= right && char.IsWhiteSpace(text[left]))
+                left++;
+
+            while (right >= left && char.IsWhiteSpace(text[right]))
+                right--;
+
+            if (right < left)
+                return;
+
+            int length = right - left + 1;
+            string seg = text.Substring(left, length);
+            outlist.Add(seg);
+        }
+
+        public static void SubstringFilter(List<string> outlist, string text, bool keepMatches)
+        {
+            if (outlist == null) return;
             if (string.IsNullOrEmpty(text))
-                return parts;
+                return;
 
             int len = text.Length, i = 0, segmentStart = 0;
-
-            bool IsChineseChar(char c) =>
-                (c >= '\u4e00' && c <= '\u9fa5') ||
-                (c >= '\u3000' && c <= '\u303F') ||
-                (c >= '\uFF00' && c <= '\uFFEF');
-
-            void AddSegIfNotEmpty(int start, int end)
-            {
-                if (end <= start)
-                    return;
-
-                int left = start;
-                int right = end - 1;
-
-                while (left <= right && char.IsWhiteSpace(text[left]))
-                    left++;
-
-                while (right >= left && char.IsWhiteSpace(text[right]))
-                    right--;
-
-                if (right < left)
-                    return;
-
-                int length = right - left + 1;
-                string seg = text.Substring(left, length);
-
-                if (!IsNullOrWhiteSpace(seg))
-                    parts.Add(seg);
-            }
-
-            bool StartsWithAt(string source, int index, string value, StringComparison comparison)
-            {
-                if (index < 0 || index + value.Length > source.Length)
-                    return false;
-                return string.Compare(source, index, value, 0, value.Length, comparison) == 0;
-            }
 
             while (i < len)
             {
                 int matchLen = 0;
 
-                if (text[i] == '[' && StartsWithAt(text, i, "[color ", StringComparison.OrdinalIgnoreCase))
+                if (text[i] == '[' && TextProcessor.StartsWithString(text, i, "[color "))
                 {
-                    int closeIdx = text.IndexOf(']', i + 7);
+                    int closeIdx = TextProcessor.IndexOfChar(text, ']', i + 7);
                     if (closeIdx != -1)
                         matchLen = closeIdx - i + 1;
                 }
-                else if (text[i] == '[' && StartsWithAt(text, i, "[sprite ", StringComparison.OrdinalIgnoreCase))
+                else if (text[i] == '[' && TextProcessor.StartsWithString(text, i, "[sprite "))
                 {
-                    int closeIdx = text.IndexOf(']', i + 8);
+                    int closeIdx = TextProcessor.IndexOfChar(text, ']', i + 8);
                     if (closeIdx != -1)
                         matchLen = closeIdx - i + 1;
                 }
-                else if (StartsWithAt(text, i, "[/color]", StringComparison.OrdinalIgnoreCase))
+                else if (TextProcessor.StartsWithString(text, i, "[/color]"))
                 {
                     matchLen = 8;
                 }
                 else if (text[i] == '{')
                 {
-                    int closeIdx = text.IndexOf('}', i + 1);
+                    int closeIdx = TextProcessor.IndexOfChar(text, '}', i + 1);
                     if (closeIdx != -1)
                         matchLen = closeIdx - i + 1;
                 }
@@ -411,19 +408,19 @@ namespace AutoTranslate
                     }
                     if (valid) matchLen = 10;
                 }
-                else if (IsChineseChar(text[i]))
+                else if (TextProcessor.IsChineseChar(text[i]))
                 {
                     int j = i;
-                    while (j < len && IsChineseChar(text[j])) j++;
+                    while (j < len && TextProcessor.IsChineseChar(text[j])) j++;
                     matchLen = j - i;
                 }
-                else if (text[i] == '<' && StartsWithAt(text, i, "<color=", StringComparison.OrdinalIgnoreCase))
+                else if (text[i] == '<' && TextProcessor.StartsWithString(text, i, "<color="))
                 {
-                    int closeIdx = text.IndexOf('>', i + 7);
+                    int closeIdx = TextProcessor.IndexOfChar(text, '>', i + 7);
                     if (closeIdx != -1)
                         matchLen = closeIdx - i + 1;
                 }
-                else if (StartsWithAt(text, i, "</color>", StringComparison.OrdinalIgnoreCase))
+                else if (TextProcessor.StartsWithString(text, i, "</color>"))
                 {
                     matchLen = 8;
                 }
@@ -482,13 +479,13 @@ namespace AutoTranslate
                 {
                     if (keepMatches)
                     {
-                        AddSegIfNotEmpty(segmentStart, i);
-                        parts.Add(text.Substring(i, matchLen));
+                        AddSegIfNotEmpty(outlist, text, segmentStart, i);
+                        outlist.Add(text.Substring(i, matchLen));
                         segmentStart = i + matchLen;
                     }
                     else
                     {
-                        AddSegIfNotEmpty(segmentStart, i);
+                        AddSegIfNotEmpty(outlist, text, segmentStart, i);
                         segmentStart = i + matchLen;
                     }
                     i += matchLen;
@@ -499,9 +496,7 @@ namespace AutoTranslate
                 }
             }
 
-            AddSegIfNotEmpty(segmentStart, len);
-
-            return parts;
+            AddSegIfNotEmpty(outlist, text, segmentStart, len);
         }
 
         private int GenerateBatch()
@@ -515,19 +510,19 @@ namespace AutoTranslate
 
             foreach (var text in uniqueTexts)
             {
-                List<string> parts = listStringPool.Get();
+                List<string> parts = Pools.listStringPool.Get();
                 if (config.FilterForIgnoredSubstringWithinText == AutoTranslateModule.FilterForIgnoredSubstringWithinTextType.CustomRegex)
                 {
                     if (config.RegexForIgnoredSubstringWithinText != null)
                         parts.AddRange(ignoredSubstringWithinTextRegex.Split(text)
-                                            .Select(part => part.Trim())
-                                            .Where(part => !IsNullOrWhiteSpace(part)));
+                                            .Select(part => TextProcessor.TrimOnlyIfNeeded(part))
+                                            .Where(part => !TextProcessor.IsNullOrWhiteSpace(part)));
                     else
-                        parts.Add(text.Trim());
+                        parts.Add(TextProcessor.TrimOnlyIfNeeded(text));
                 }
                 else
                 {
-                    parts = SubstringFilter(text, keepMatches: false);
+                    SubstringFilter(parts, text, keepMatches: false);
                 }
 
                 bool allTranslated = true;
@@ -556,7 +551,7 @@ namespace AutoTranslate
                     translatedTextBuilder.Append(text);
                     foreach (var part in parts)
                     {
-                        int startIndex = translatedTextBuilder.ToString().IndexOf(part);
+                        int startIndex = TextProcessor.IndexOfString(translatedTextBuilder, part);
                         if (startIndex != -1 && batchTranslationDictionary.TryGetValue(part, out var translatedPart))
                         {
                             translatedTextBuilder.Replace(part, translatedPart, startIndex, part.Length);
@@ -569,13 +564,14 @@ namespace AutoTranslate
                     {
                         foreach (var control in controls)
                         {
-                            OnTranslationFinish(control, text, translatedText, true);
-                            RemoveTextFromControlStatusMap(control, text);
+                            OnTranslationFinishTextObject(control, text, translatedText, true);
+                            RemoveTextFromControlTextMap(control, text);
+                            Pools.textObjectPool.Return(control);
                         }
-                        listObjectPool.Return(controls);
+                        Pools.listTextObjectPool.Return(controls);
                         textControlMap.Remove(text);
                     }
-                    listStringPool.Return(parts);
+                    Pools.listStringPool.Return(parts);
                 }
                 else
                 {
@@ -596,7 +592,7 @@ namespace AutoTranslate
             if (exceededThreshold == false && config.RequestedCharacterCountAlertThreshold > 0 && requestedCharacterCount + batchCharacterCount > config.RequestedCharacterCountAlertThreshold)
             {
                 exceededThreshold = true;
-                StatusLabelController.instance.SetHighlight();
+                StatusLabelController.instance?.SetHighlight();
                 ForceSetTranslte(false);
                 SetStatusLabelText();
             }
@@ -618,80 +614,92 @@ namespace AutoTranslate
                 batchSubTexts,
                 (translatedTexts) =>
                 {
-                    if (translatedTexts == null || translatedTexts.Length != batchSubTexts.Count)
+                    try
                     {
-                        if (translatedTexts != null)
+                        if (translatedTexts == null || translatedTexts.Count != batchSubTexts.Count)
                         {
-                            Debug.LogError("翻译结果数量与请求数量不匹配！The number of translation results does not match the number of requests!");
-                            Debug.LogError("请求 Requests：");
-                            foreach (var subText in batchSubTexts)
-                                Debug.Log("      " + subText);
-                            Debug.LogError("结果 Results：");
-                            foreach (var subText in translatedTexts)
-                                Debug.Log("      " + subText);
+                            if (translatedTexts != null)
+                            {
+                                Debug.LogError("翻译结果数量与请求数量不匹配！The number of translation results does not match the number of requests!");
+                                Debug.LogError("请求 Requests：");
+                                foreach (var subText in batchSubTexts)
+                                    Debug.Log("      " + subText);
+                                Debug.LogError("结果 Results：");
+                                foreach (var subText in translatedTexts)
+                                    Debug.Log("      " + subText);
+                            }
+
+                            foreach (var originalText in uniqueTexts)
+                            {
+                                if (!batchSplitMap.TryGetValue(originalText, out var parts))
+                                {
+                                    continue;
+                                }
+
+                                Pools.listStringPool.Return(parts);
+                                batchSplitMap.Remove(originalText);
+                                if (textControlMap.TryGetValue(originalText, out var controls))
+                                {
+                                    foreach (var control in controls)
+                                    {
+                                        RemoveTextFromControlTextMap(control, originalText);
+                                        Pools.textObjectPool.Return(control);
+                                    }
+                                    Pools.listTextObjectPool.Return(controls);
+                                    textControlMap.Remove(originalText);
+                                }
+                            }
+                            return;
                         }
+
+                        for (int i = 0; i < batchSubTexts.Count; i++)
+                        {
+                            string processedText = translatedTexts[i].Replace("\\n", "\n");
+                            batchTranslationDictionary[batchSubTexts[i]] = processedText;
+                            translationCache.Set(batchSubTexts[i], processedText);
+                        }
+                        requestedCharacterCount += batchCharacterCount;
+                        SetStatusLabelText();
 
                         foreach (var originalText in uniqueTexts)
                         {
                             if (!batchSplitMap.TryGetValue(originalText, out var parts))
-                            {
                                 continue;
-                            }
 
-                            listStringPool.Return(parts);
+                            translatedTextBuilder.Length = 0;
+                            translatedTextBuilder.Append(originalText);
+
+                            foreach (var part in parts)
+                            {
+                                int startIndex = TextProcessor.IndexOfString(translatedTextBuilder, part);
+                                if (startIndex != -1 && batchTranslationDictionary.TryGetValue(part, out var translatedPart))
+                                {
+                                    translatedTextBuilder.Replace(part, translatedPart, startIndex, part.Length);
+                                }
+                            }
+                            Pools.listStringPool.Return(parts);
                             batchSplitMap.Remove(originalText);
+
+                            string translatedText = translatedTextBuilder.ToString();
+
                             if (textControlMap.TryGetValue(originalText, out var controls))
                             {
                                 foreach (var control in controls)
                                 {
-                                    RemoveTextFromControlStatusMap(control, originalText);
+                                    OnTranslationFinishTextObject(control, originalText, translatedText, true);
+                                    RemoveTextFromControlTextMap(control, originalText);
+                                    Pools.textObjectPool.Return(control);
                                 }
-                                listObjectPool.Return(controls);
+                                Pools.listTextObjectPool.Return(controls);
                                 textControlMap.Remove(originalText);
                             }
                         }
-                        return;
                     }
-
-                    for (int i = 0; i < batchSubTexts.Count; i++)
+                    finally
                     {
-                        string processedText = translatedTexts[i].Replace("\\n", "\n");
-                        batchTranslationDictionary[batchSubTexts[i]] = processedText;
-                        translationCache.Set(batchSubTexts[i], processedText);
-                    }
-                    requestedCharacterCount += batchCharacterCount;
-                    SetStatusLabelText();
-
-                    foreach (var originalText in uniqueTexts)
-                    {
-                        if (!batchSplitMap.TryGetValue(originalText, out var parts))
-                            continue;
-
-                        translatedTextBuilder.Length = 0;
-                        translatedTextBuilder.Append(originalText);
-
-                        foreach (var part in parts)
+                        if (translatedTexts != null)
                         {
-                            int startIndex = translatedTextBuilder.ToString().IndexOf(part);
-                            if (startIndex != -1 && batchTranslationDictionary.TryGetValue(part, out var translatedPart))
-                            {
-                                translatedTextBuilder.Replace(part, translatedPart, startIndex, part.Length);
-                            }
-                        }
-                        listStringPool.Return(parts);
-                        batchSplitMap.Remove(originalText);
-
-                        string translatedText = translatedTextBuilder.ToString();
-
-                        if (textControlMap.TryGetValue(originalText, out var controls))
-                        {
-                            foreach (var control in controls)
-                            {
-                                OnTranslationFinish(control, originalText, translatedText, true);
-                                RemoveTextFromControlStatusMap(control, originalText);
-                            }
-                            listObjectPool.Return(controls);
-                            textControlMap.Remove(originalText);
+                            Pools.listStringPool.Return(translatedTexts);
                         }
                     }
                 })
@@ -700,7 +708,11 @@ namespace AutoTranslate
 
         public void AddTranslationRequest(string text, object control)
         {
+            if (text == null || control == null)
+                return;
             if (!translateOn)
+                return;
+            if (cachedObject != null && control == cachedObject.Object && text.Equals(cachedString))
                 return;
 
             if (!NeedToTranslate(text))
@@ -709,16 +721,21 @@ namespace AutoTranslate
             if (translationCache.TryGetValue(text, out string translatedText))
             {
                 OnTranslationFinish(control, text, translatedText, false);
-                RemoveTextFromControlStatusMap(control, text);
                 return;
             }
 
+            TextObject textObject = Pools.textObjectPool.Get();
+            textObject.Set(control);
+
+            cachedString = text;
+            cachedObject = textObject;
+
             if (text.Length <= config.MaxBatchCharacterCount)
             {
-                text = RemovePrefixFromText(text, control);
-                if (IsNullOrWhiteSpace(text))
+                text = RemovePrefixFromText(text, textObject);
+                if (TextProcessor.IsNullOrWhiteSpace(text))
                     return;
-                SubmitRequest(control, text);
+                SubmitRequest(textObject, text);
                 if (!isProcessingQueue)
                     StartCoroutine(ProcessTranslationQueue());
                 return;
@@ -750,74 +767,87 @@ namespace AutoTranslate
             }
             else
             {
-                List<string> parts = SubstringFilter(text, keepMatches: true);
+                List<string> parts = Pools.listStringPool.Get();
+                SubstringFilter(parts, text, keepMatches: true);
                 foreach (var part in parts)
                     AddChunks(finalChunks, part);
+                Pools.listStringPool.Return(parts);
             }
 
             foreach (var chunk in finalChunks)
             {
-                string chunkToQueue = RemovePrefixFromText(chunk, control);
-                if (IsNullOrWhiteSpace(chunkToQueue))
+                string chunkToQueue = RemovePrefixFromText(chunk, textObject);
+                if (TextProcessor.IsNullOrWhiteSpace(chunkToQueue))
                     continue;
-                SubmitRequest(control, chunkToQueue);
+                SubmitRequest(textObject, chunkToQueue);
             }
 
             if (!isProcessingQueue)
                 StartCoroutine(ProcessTranslationQueue());
         }
 
-        private void SubmitRequest(object control, string text)
+        private void SubmitRequest(TextObject textObject, string text)
         {
-            AddTextToControlStatusMap(control, text);
-            TranslationQueueElement element = translationQueueElementPool.Get();
-            element.Set(text, control);
-            translationQueue.Enqueue(element);
+            AddTextToControlTextMap(textObject, text);
+            translationQueue.Enqueue(new TranslationQueueElement(text, textObject));
             if (fullTextCache.TryGetValue(text, out int count))
                 fullTextCache.Set(text, count + 1);
             else
                 fullTextCache.Set(text, 1);
         }
 
-        private string RemovePrefixFromText(string text, object control)
+        private string RemovePrefixFromText(string text, TextObject textObject)
         {
-            if (controlTextMap.TryGetValue(control, out var prevTexts))
+            if (controlTextMap.TryGetValue(textObject, out var prevTexts))
             {
+                int totalRemoveLength = 0;
+
                 foreach (var prevText in prevTexts)
                 {
-                    if (text.StartsWith(prevText) && !text.Equals(prevText))
-                        text = text.Substring(prevText.Length);
+                    if (TextProcessor.StartsWithString(text, totalRemoveLength, prevText) &&
+                        totalRemoveLength + prevText.Length < text.Length)
+                    {
+                        totalRemoveLength += prevText.Length;
+                    }
                 }
+
+                if (totalRemoveLength > 0)
+                    return text.Substring(totalRemoveLength);
             }
+
             return text;
         }
 
-        private void AddTextToControlStatusMap(object control, string text)
+        private void AddTextToControlTextMap(TextObject textObject, string text)
         {
-            if (!controlTextMap.TryGetValue(control, out List<string> translatedTexts))
+            if (!controlTextMap.TryGetValue(textObject, out List<string> translatedTexts))
             {
-                translatedTexts = listStringPool.Get();
-                controlTextMap[control] = translatedTexts;
+                translatedTexts = Pools.listStringPool.Get();
+                controlTextMap[textObject] = translatedTexts;
             }
 
             if (!translatedTexts.Contains(text))
                 translatedTexts.Add(text);
         }
 
-        private void RemoveTextFromControlStatusMap(object control, string originalText)
+        private void RemoveTextFromControlTextMap(TextObject textObject, string originalText)
         {
             if (controlTextMap.Count == 0)
                 return;
 
 
-            if (controlTextMap.TryGetValue(control, out List<string> translatedTexts))
+            if (controlTextMap.TryGetValue(textObject, out List<string> translatedTexts))
             {
-                translatedTexts.RemoveAll(text => text == originalText);
+                for (int i = translatedTexts.Count - 1; i >= 0; i--)
+                {
+                    if (translatedTexts[i].Equals(originalText))
+                        translatedTexts.RemoveAt(i);
+                }
 
                 if (translatedTexts.Count == 0)
                 {
-                    listStringPool.Return(translatedTexts);
-                    controlTextMap.Remove(control);
+                    Pools.listStringPool.Return(translatedTexts);
+                    controlTextMap.Remove(textObject);
                 }
             }
         }
@@ -829,21 +859,31 @@ namespace AutoTranslate
                 chunks.Add(text.Substring(i, Math.Min(size, text.Length - i)));
         }
 
-        private void OnTranslationFinish(object textObject, string original, string result, bool setFullTextCached)
+        private void OnTranslationFinishTextObject(TextObject textObject, string original, string result, bool setFullTextCached)
         {
             if (textObject == null || result == null)
+                return;
+
+            object target = textObject.Object;
+            OnTranslationFinish(target, original, result, setFullTextCached);
+        }
+
+        private void OnTranslationFinish(object control, string original, string result, bool setFullTextCached)
+        {
+            if (control == null || result == null)
                 return;
 
             if (setFullTextCached && fullTextCache.TryGetValue(original, out int count) && count > 2)
                 translationCache.Set(original, result);
 
-            if (textObject is dfLabel dfLabel)
+            resultBuilder.Length = 0;
+            if (control is dfLabel dfLabel)
             {
                 if (dfLabel == null || dfLabel.text == null || !dfLabel.isActiveAndEnabled)
                     return;
 
                 string originalText = dfLabel.text;
-                int startIndex = dfLabel.text.IndexOf(original);
+                int startIndex = TextProcessor.IndexOfString(dfLabel.text, original);
                 if (startIndex != -1)
                 {
                     bool isDefaultLabel = dfLabel.gameObject?.name == "DefaultLabel";
@@ -860,9 +900,10 @@ namespace AutoTranslate
                             dfLabel.TextScale = config.DfTextScaleExpandToValue;
                     }
 
-                    dfLabel.text = originalText.Substring(0, startIndex) +
-                                   result +
-                                   originalText.Substring(startIndex + original.Length);
+                    resultBuilder.Append(originalText, 0, startIndex)
+                      .Append(result)
+                      .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
+                    dfLabel.text = resultBuilder.ToString();
 
                     dfLabel.Invalidate();
                     if (isDefaultLabel)
@@ -872,13 +913,13 @@ namespace AutoTranslate
                     }
                 }
             }
-            else if (textObject is dfButton dfButton)
+            else if (control is dfButton dfButton)
             {
                 if (dfButton == null || dfButton.text == null || !dfButton.isActiveAndEnabled)
                     return;
 
                 string originalText = dfButton.text;
-                int startIndex = originalText.IndexOf(original);
+                int startIndex = TextProcessor.IndexOfString(originalText, original);
                 if (startIndex != -1)
                 {
                     dfFontBase fontBase = FontManager.instance.dfFontBase;
@@ -892,58 +933,53 @@ namespace AutoTranslate
                             dfButton.TextScale = config.DfTextScaleExpandToValue;
                     }
 
-                    dfButton.text = originalText.Substring(0, startIndex) +
-                                    result +
-                                    originalText.Substring(startIndex + original.Length);
+                    resultBuilder.Append(originalText, 0, startIndex)
+                      .Append(result)
+                      .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
+                    dfButton.text = resultBuilder.ToString();
+
                     dfButton.Invalidate();
                 }
             }
-            else if (textObject is SGUI.SLabel sLabel)
+            else if (control is SGUI.SLabel sLabel)
             {
                 if (sLabel == null || sLabel.Text == null)
                     return;
 
                 string originalText = FontManager.instance.itemTipsModuleText;
-                int startIndex = originalText.IndexOf(original);
+                int startIndex = TextProcessor.IndexOfString(originalText, original);
                 if (startIndex != -1)
                 {
-                    string newText = originalText.Substring(0, startIndex) +
-                                    result +
-                                    originalText.Substring(startIndex + original.Length);
+                    resultBuilder.Append(originalText, 0, startIndex)
+                      .Append(result)
+                      .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
 
-                    sLabel.Text = FontManager.instance.WrapText(newText, out Vector2 sizeVector);
+                    sLabel.Text = FontManager.instance.WrapText(resultBuilder.ToString(), out Vector2 sizeVector);
                     sLabel.Size = sizeVector;
                     FontManager.instance.ItemTipsReposition(sLabel);
                 }
             }
-            else if (textObject is tk2dTextMesh textMesh)
+            else if (control is tk2dTextMesh textMesh)
             {
                 if (textMesh == null || textMesh.data == null || textMesh.data.text == null)
                     return;
 
                 string originalText = textMesh.data.text;
-                int startIndex = originalText.IndexOf(original);
+                int startIndex = TextProcessor.IndexOfString(originalText, original);
                 if (startIndex != -1)
                 {
                     tk2dFontData tk2dFont = FontManager.instance.tk2dFont;
                     if (tk2dFont != null && textMesh.font != tk2dFont)
                         FontManager.SetTextMeshFont(textMesh, tk2dFont);
 
-                    textMesh.data.text = originalText.Substring(0, startIndex) +
-                                         result +
-                                         originalText.Substring(startIndex + original.Length);
+                    resultBuilder.Append(originalText, 0, startIndex)
+                      .Append(result)
+                      .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
+                    textMesh.data.text = resultBuilder.ToString();
+
                     textMesh.SetNeedUpdate(tk2dTextMesh.UpdateFlags.UpdateText);
                 }
             }
-        }
-
-        private static bool IsNullOrWhiteSpace(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return true;
-            foreach (var ch in s)
-                if (!char.IsWhiteSpace(ch))
-                    return false;
-            return true;
         }
 
         public void ReadAndRestoreTranslationCache(string filePath)

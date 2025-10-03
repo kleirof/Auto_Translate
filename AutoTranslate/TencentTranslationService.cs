@@ -19,88 +19,181 @@ namespace AutoTranslate
         private string action = "TextTranslateBatch";
         private string version = "2018-03-21";
 
+        private ReusableStringReader pooledReader = new ReusableStringReader();
+        private StringBuilder stringBuilder = new StringBuilder(256);
+
         public TencentTranslationService(AutoTranslateConfig config)
         {
             this.config = config;
         }
 
-        private string[] ParseResponse(string responseJson)
+        private List<string> ParseResponse(string responseJson)
         {
-            JObject jsonResponse;
+            var result = Pools.listStringPool.Get();
 
             try
             {
-                jsonResponse = JObject.Parse(responseJson);
+                pooledReader.Reset(responseJson);
+                using (var reader = new JsonTextReader(pooledReader))
+                {
+                    bool inResponse = false;
+                    bool inTargetTextList = false;
+                    bool inArray = false;
+                    int targetDepth = -1;
+
+                    while (reader.Read())
+                    {
+                        switch (reader.TokenType)
+                        {
+                            case JsonToken.PropertyName:
+                                string propertyName = (string)reader.Value;
+
+                                if (propertyName == "Response" && !inResponse)
+                                {
+                                    inResponse = true;
+                                }
+                                else if (inResponse && propertyName == "TargetTextList" && !inTargetTextList)
+                                {
+                                    inTargetTextList = true;
+                                }
+                                break;
+
+                            case JsonToken.StartArray:
+                                if (inTargetTextList && !inArray)
+                                {
+                                    inArray = true;
+                                    targetDepth = reader.Depth;
+                                }
+                                break;
+
+                            case JsonToken.String:
+                                if (inArray && inTargetTextList)
+                                {
+                                    string translatedText = reader.Value?.ToString();
+                                    if (!string.IsNullOrEmpty(translatedText))
+                                    {
+                                        result.Add(translatedText);
+                                    }
+                                }
+                                break;
+
+                            case JsonToken.EndArray:
+                                if (inArray && reader.Depth == targetDepth)
+                                {
+                                    inArray = false;
+                                    inTargetTextList = false;
+                                    inResponse = false;
+                                }
+                                break;
+                        }
+                    }
+                }
+
+                if (result.Count == 0)
+                {
+                    throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
+                }
+
+                return result;
             }
-            catch (JsonReaderException ex)
+            catch (Exception ex)
             {
-                throw new InvalidOperationException("响应的JSON格式无效 The JSON format of the response is invalid: ", ex);
+                Pools.listStringPool.Return(result);
+                throw new InvalidOperationException($"解析响应失败 Failed to parse response: {ex.Message}");
             }
-
-            if (jsonResponse["Response"] == null)
-            {
-                throw new InvalidOperationException("响应中缺少Response字段！The 'Response' field is missing from the response!");
-            }
-
-            var targetTextList = jsonResponse["Response"]["TargetTextList"];
-            if (targetTextList == null)
-            {
-                throw new InvalidOperationException("响应中缺少TargetTextList字段！The 'TargetTextList' field is missing from the response!");
-            }
-
-            string[] translatedTexts = targetTextList.ToObject<string[]>();
-
-            if (translatedTexts == null || translatedTexts.Length == 0)
-            {
-                throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
-            }
-
-            return translatedTexts;
         }
+
         public static string[] PreprocessText(List<string> inputTexts)
         {
             return inputTexts.Select(text => text.Replace("\r", "")).ToArray();
         }
 
-        public IEnumerator StartTranslation(List<string> texts, Action<string[]> callback)
+        private string BuildTencentPayloadJson(string[] preprocessedTexts, string sourceLang, string targetLang)
+        {
+            stringBuilder.Length = 0;
+            stringBuilder.Append("{\"SourceTextList\":[");
+            for (int i = 0; i < preprocessedTexts.Length; i++)
+            {
+                if (i > 0) stringBuilder.Append(",");
+                stringBuilder.Append('"');
+                TextProcessor.AppendEscapeJsonString(preprocessedTexts[i], stringBuilder);
+                stringBuilder.Append('"');
+            }
+            stringBuilder.Append("],\"Source\":\"");
+            stringBuilder.Append(sourceLang);
+            stringBuilder.Append("\",\"Target\":\"");
+            stringBuilder.Append(targetLang);
+            stringBuilder.Append("\",\"ProjectId\":0}");
+            return stringBuilder.ToString();
+        }
+
+        private string BuildCanonicalRequest(string payloadJson, string endpoint)
+        {
+            stringBuilder.Length = 0;
+            stringBuilder.Append("POST\n/\n\ncontent-type:application/json\nhost:");
+            stringBuilder.Append(endpoint);
+            stringBuilder.Append("\n\ncontent-type;host\n");
+            stringBuilder.Append(ComputeSHA256(payloadJson));
+            return stringBuilder.ToString();
+        }
+
+        private string BuildStringToSign(long timestamp, string date, string canonicalRequest)
+        {
+            stringBuilder.Length = 0;
+            stringBuilder.Append("TC3-HMAC-SHA256\n");
+            stringBuilder.Append(timestamp);
+            stringBuilder.Append('\n');
+            stringBuilder.Append(date);
+            stringBuilder.Append("/tmt/tc3_request\n");
+            stringBuilder.Append(ComputeSHA256(canonicalRequest));
+            return stringBuilder.ToString();
+        }
+
+        private string BuildAuthorization(string secretId, string date, string signature)
+        {
+            stringBuilder.Length = 0;
+            stringBuilder.Append("TC3-HMAC-SHA256 Credential=");
+            stringBuilder.Append(secretId);
+            stringBuilder.Append('/');
+            stringBuilder.Append(date);
+            stringBuilder.Append("/tmt/tc3_request, SignedHeaders=content-type;host, Signature=");
+            stringBuilder.Append(signature);
+            return stringBuilder.ToString();
+        }
+
+        public IEnumerator StartTranslation(List<string> texts, Action<List<string>> callback)
         {
             string[] preprocessedTexts = PreprocessText(texts);
             long timestamp = GetUnixTimeSeconds();
+
             string date = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
-            var payload = new
-            {
-                SourceTextList = preprocessedTexts,
-                Source = config.TencentSourceLanguage,
-                Target = config.TencentTargetLanguage,
-                ProjectId = 0
-            };
-            string payloadJson = JsonConvert.SerializeObject(payload);
+            string payloadJson = BuildTencentPayloadJson(preprocessedTexts, config.TencentSourceLanguage, config.TencentTargetLanguage);
 
-            string canonicalRequest = $"POST\n/\n\ncontent-type:application/json\nhost:{endpoint}\n\ncontent-type;host\n{ComputeSHA256(payloadJson)}";
-            string stringToSign = $"TC3-HMAC-SHA256\n{timestamp}\n{date}/tmt/tc3_request\n{ComputeSHA256(canonicalRequest)}";
+            string canonicalRequest = BuildCanonicalRequest(payloadJson, endpoint);
+            string stringToSign = BuildStringToSign(timestamp, date, canonicalRequest);
             byte[] signingKey = GetSignatureKey(config.TencentSecretKey, date, "tmt", "tc3_request");
             string signature = ConvertToHexString(ComputeHMACSHA256(stringToSign, signingKey));
-
-            string authorization = $"TC3-HMAC-SHA256 Credential={config.TencentSecretId}/{date}/tmt/tc3_request, SignedHeaders=content-type;host, Signature={signature}";
+            string authorization = BuildAuthorization(config.TencentSecretId, date, signature);
 
             int retryCount = 0;
             bool needRetry = false;
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(payloadJson);
 
-            for(; ; )
+            for (; ; )
             {
                 if (needRetry)
                 {
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
-                        Debug.Log($"正在重试。。。尝试第 {retryCount} 次。Retrying... Attempt time {retryCount}.");
+                        Debug.Log($"[{config.TranslationAPI}] 正在重试。。。尝试第 {retryCount} 次。Retrying... Attempt time {retryCount}.");
                         needRetry = false;
                         yield return new WaitForSecondsRealtime(config.RetryInterval);
                     }
                     else
                     {
-                        Debug.LogError($"多次尝试失败。已重试 {config.MaxRetryCount} 次。翻译中止！Multiple attempts failed. Retried {config.MaxRetryCount} times. translation aborted!");
+                        Debug.LogError($"[{config.TranslationAPI}] 多次尝试失败。已重试 {config.MaxRetryCount} 次。翻译中止！Multiple attempts failed. Retried {config.MaxRetryCount} times. translation aborted!");
                         callback?.Invoke(null);
                         yield break;
                     }
@@ -108,8 +201,6 @@ namespace AutoTranslate
 
                 using (UnityWebRequest request = new UnityWebRequest($"https://{endpoint}", "POST"))
                 {
-                    byte[] bodyRaw = Encoding.UTF8.GetBytes(payloadJson);
-
                     request.uploadHandler = new UploadHandlerRaw(bodyRaw);
                     request.downloadHandler = new DownloadHandlerBuffer();
                     request.SetRequestHeader("Content-Type", "application/json");
@@ -130,29 +221,41 @@ namespace AutoTranslate
                     else
                     {
                         string responseJson = request.downloadHandler.text;
-                        string[] translatedTexts = null;
+                        List<string> translatedTexts = null;
+                        bool success = false;
+
                         try
                         {
                             translatedTexts = ParseResponse(responseJson);
+
+                            if (translatedTexts != null && translatedTexts.Count > 0)
+                            {
+                                callback?.Invoke(translatedTexts);
+                                translatedTexts = null;
+                                success = true;
+                                yield break;
+                            }
+                            else
+                            {
+                                Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
+                                needRetry = true;
+                            }
                         }
                         catch (Exception ex)
                         {
                             Debug.LogError($"解析翻译结果失败 Failed to parse translation result：{ex.Message}");
                             Debug.LogError($"响应JSON Response JSON：\n{responseJson}");
                             needRetry = true;
-                            continue;
+                        }
+                        finally
+                        {
+                            if (!success && translatedTexts != null)
+                            {
+                                Pools.listStringPool.Return(translatedTexts);
+                            }
                         }
 
-                        if (translatedTexts != null)
-                        {
-                            callback?.Invoke(translatedTexts);
-                        }
-                        else
-                        {
-                            Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
-                            needRetry = true;
-                        }
-                        yield break;
+                        continue;
                     }
                 }
             }
@@ -185,7 +288,7 @@ namespace AutoTranslate
 
         private string ConvertToHexString(byte[] bytes)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new StringBuilder(256);
             foreach (byte b in bytes)
             {
                 sb.Append(b.ToString("x2"));

@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using SGUI;
+using System.Text;
 
 namespace AutoTranslate
 {
@@ -15,7 +16,7 @@ namespace AutoTranslate
     {
         private static AutoTranslateConfig config = AutoTranslateModule.instance.config;
 
-        private static readonly Regex spritePattern = new Regex(@"(\[sprite\s+""[^""]*"")(?!\])", RegexOptions.Compiled);
+        private static StringBuilder addBracketBuilder = new StringBuilder(256);
 
         public static void EmitCall<T>(this ILCursor iLCursor, string methodName, Type[] parameters = null, Type[] generics = null)
         {
@@ -41,9 +42,81 @@ namespace AutoTranslate
                 .GetValue(instance);
         }
 
-        static string AddMissingBracket(string input)
+        private static string AddMissingBracket(string input)
         {
-            return spritePattern.Replace(input, match => match.Groups[1].Value + "]");
+            if (string.IsNullOrEmpty(input))
+                return input;
+
+            addBracketBuilder.Length = 0;
+            int i = 0;
+            int length = input.Length;
+            bool modified = false;
+
+            while (i < length)
+            {
+                if (i + 7 < length &&
+                    TextProcessor.StartsWithString(input, i, "[sprite") &&
+                    char.IsWhiteSpace(input[i + 7]))
+                {
+                    int start = i;
+                    i += 8;
+
+                    while (i < length && char.IsWhiteSpace(input[i]))
+                        i++;
+
+                    if (i < length && input[i] == '"')
+                    {
+                        i++;
+
+                        while (i < length && input[i] != '"')
+                        {
+                            if (input[i] == '\\' && i + 1 < length && input[i + 1] == '"')
+                                i += 2;
+                            else
+                                i++;
+                        }
+
+                        if (i < length && input[i] == '"')
+                        {
+                            i++;
+
+                            bool hasClosingBracket = (i < length && input[i] == ']');
+
+                            if (!hasClosingBracket)
+                            {
+                                addBracketBuilder.Append(input, start, i - start);
+                                addBracketBuilder.Append(']');
+                                modified = true;
+                            }
+                            else
+                            {
+                                addBracketBuilder.Append(input, start, i - start + 1);
+                                i++;
+                            }
+                        }
+                        else
+                        {
+                            addBracketBuilder.Append(input, start, i - start);
+                            modified = true;
+                        }
+                    }
+                    else
+                    {
+                        addBracketBuilder.Append(input, start, i - start);
+                        modified = true;
+                    }
+                }
+                else
+                {
+                    addBracketBuilder.Append(input[i]);
+                    i++;
+                }
+            }
+
+            if (!modified && addBracketBuilder.Length == input.Length)
+                return input;
+
+            return addBracketBuilder.ToString();
         }
 
         private static void DfLabelTextAddCall(dfLabel instance)
@@ -255,7 +328,6 @@ namespace AutoTranslate
                         {
                             return false;
                         }
-                        __instance.tokens.ReleaseItems();
                         __instance.tokens.Release();
                     }
                     __instance.tokens = FontManager.instance?.Tokenize(text);
@@ -689,6 +761,33 @@ namespace AutoTranslate
                     __result = __instance.Skin.font.fontSize * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
                 else if (__instance.Skin.font != null && __instance.Skin.font == FontManager.instance.itemTipsModuleFont)
                     __result = 1.1f * FontManager.instance.originalLineHeight * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
+            }
+        }
+
+        [HarmonyPatch(typeof(FoyerPreloader), nameof(FoyerPreloader.Awake))]
+        public class FoyerPreloaderAwakePatchClass
+        {
+            [HarmonyPostfix]
+            public static void FoyerPreloaderAwakePostfix(FoyerPreloader __instance)
+            {
+                Transform loadingTransform = __instance.transform?.Find("weird name thing");
+                if (loadingTransform == null) 
+                    return;
+                DFScaleFixer component = loadingTransform.GetComponent<DFScaleFixer>();
+                if (component != null)
+                    UnityEngine.Object.Destroy(component);
+                dfGUIManager guiManager = loadingTransform.GetComponent<dfGUIManager>();
+                if (guiManager == null)
+                    return;
+                guiManager.UIScale = 1;
+                guiManager.PixelPerfectMode = true;
+
+                for (int i = 0; i < loadingTransform.childCount; i++)
+                {
+                    Transform child = loadingTransform.GetChild(i);
+                    if (child.GetComponent<dfLabel>() == null)
+                        child.localScale *= 5;
+                }
             }
         }
     }

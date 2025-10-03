@@ -1,20 +1,14 @@
 ﻿namespace AutoTranslate
 {
-    class TranslationQueueElement
+    public struct TranslationQueueElement
     {
         public string text;
-        public object control;
+        public TextObject textObject;
 
-        public void Set(string text, object control)
+        public TranslationQueueElement(string text, TextObject textObject)
         {
             this.text = text;
-            this.control = control;
-        }
-
-        public void Reset()
-        {
-            this.text = null;
-            this.control = null;
+            this.textObject = textObject;
         }
     }
 }

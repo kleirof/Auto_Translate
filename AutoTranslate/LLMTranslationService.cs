@@ -6,7 +6,7 @@ using UnityEngine.Networking;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace AutoTranslate
 {
@@ -14,56 +14,189 @@ namespace AutoTranslate
     {
         private AutoTranslateConfig config;
 
-        private StringBuilder builder = new StringBuilder();
-        private StringBuilder jsonBuilder = new StringBuilder();
-        private StringBuilder positionedBuilder = new StringBuilder();
+        private StringBuilder builder = new StringBuilder(256);
+        private StringBuilder jsonBuilder = new StringBuilder(256);
+        private StringBuilder positionedBuilder = new StringBuilder(256);
         private readonly string[] cachedSplitPattern = new string[1];
+        private StringBuilder payloadBuilder = new StringBuilder(256);
+
+        private ReusableStringReader pooledReader = new ReusableStringReader();
+
+        private static string cachedModelName;
+        private static string cachedPrompt;
+        private static string cachedTemperature;
+        private static string cachedTopP;
+        private static string cachedFrequencyPenalty;
+        private static int cachedMaxTokens;
+        private static int cachedTopK;
+        private static string cachedExtraParams;
 
         public LlmTranslationService(AutoTranslateConfig config)
         {
             this.config = config;
             cachedSplitPattern[0] = config.LlmSplitText;
-        }
 
-        private string[] ParseJsonResponse(string content)
-        {
-            var translations = new List<string>();
+            cachedModelName = TextProcessor.EscapeJsonString(config.LlmName);
+            cachedPrompt = TextProcessor.EscapeJsonString(config.LlmPrompt);
+            cachedTemperature = config.LlmTemperature.ToString(CultureInfo.InvariantCulture);
+            cachedTopP = config.LlmTopP.ToString(CultureInfo.InvariantCulture);
+            cachedFrequencyPenalty = config.LlmFrequencyPenalty.ToString(CultureInfo.InvariantCulture);
+            cachedMaxTokens = config.LlmMaxTokens;
+            cachedTopK = config.LlmTopK;
 
-            try
+            if (!string.IsNullOrEmpty(config.LlmExtraParametersJson))
             {
-                JArray contentArray = JArray.Parse(content);
-                foreach (var item in contentArray)
+                string extraParams = config.LlmExtraParametersJson.Trim();
+                if (extraParams.StartsWith("{") && extraParams.EndsWith("}"))
                 {
-                    translations.Add(item["text"].ToString());
+                    cachedExtraParams = extraParams.Substring(1, extraParams.Length - 2);
+                }
+                else
+                {
+                    cachedExtraParams = extraParams;
                 }
             }
-            catch (JsonReaderException ex)
+            else
             {
-                Debug.LogError($"解析 'content' 字段时失败: {ex.Message}");
+                cachedExtraParams = null;
             }
-
-            return translations.ToArray();
         }
 
-        private string[] ParseSplittedResponse(string response)
+        private List<string> ParseJsonResponse(string content)
         {
-            if (string.IsNullOrEmpty(response))
+            if (string.IsNullOrEmpty(content))
+            {
+                Debug.LogError("解析JSON失败: 内容为空。Failed to parse JSON: Content is empty.");
                 return null;
-            string[] result = null;
+            }
+
+            var translations = Pools.listStringPool.Get();
 
             try
             {
-                result = response.Split(cachedSplitPattern, StringSplitOptions.RemoveEmptyEntries);
+                pooledReader.Reset(content);
+                using (var reader = new JsonTextReader(pooledReader))
+                {
+                    int targetDepth = -1;
+                    bool inArray = false;
+                    bool inObject = false;
+                    bool inTextProperty = false;
+
+                    while (reader.Read())
+                    {
+                        switch (reader.TokenType)
+                        {
+                            case JsonToken.StartArray:
+                                inArray = true;
+                                break;
+
+                            case JsonToken.StartObject:
+                                if (inArray)
+                                {
+                                    inObject = true;
+                                    targetDepth = reader.Depth;
+                                }
+                                break;
+
+                            case JsonToken.PropertyName:
+                                if (inObject && (string)reader.Value == "text" && reader.Depth == targetDepth + 1)
+                                {
+                                    inTextProperty = true;
+                                }
+                                break;
+
+                            case JsonToken.String:
+                                if (inTextProperty && inObject)
+                                {
+                                    string result = reader.Value?.ToString();
+                                    if (!string.IsNullOrEmpty(result))
+                                    {
+                                        translations.Add(result);
+                                    }
+                                    inTextProperty = false;
+                                }
+                                break;
+
+                            case JsonToken.EndObject:
+                                if (inObject && reader.Depth == targetDepth)
+                                {
+                                    inObject = false;
+                                    targetDepth = -1;
+                                    inTextProperty = false;
+                                }
+                                break;
+
+                            case JsonToken.EndArray:
+                                if (inArray)
+                                {
+                                    inArray = false;
+                                }
+                                break;
+                        }
+                    }
+                }
+
+                if (translations.Count == 0)
+                {
+                    Debug.LogError("解析JSON失败: 未找到任何 'text' 字段。 Failed to parse JSON: No 'text' field found.");
+                    Pools.listStringPool.Return(translations);
+                    return null;
+                }
+
+                return translations;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"分割字符串时发生意外错误。An unexpected error occurred while splitting the string.{ex}");
+                Debug.LogError($"解析JSON失败 Failed to parse JSON: {ex.Message}");
+                Pools.listStringPool.Return(translations);
+                return null;
             }
-
-            return result;
         }
 
-        private string[] ParsePositionedResponse(string response)
+        private List<string> ParseSplittedResponse(string response)
+        {
+            if (string.IsNullOrEmpty(response))
+                return null;
+
+            List<string> result = Pools.listStringPool.Get();
+
+            try
+            {
+                string splitText = config.LlmSplitText;
+                int splitLength = splitText.Length;
+                int startIndex = 0;
+
+                while (startIndex < response.Length)
+                {
+                    int endIndex = TextProcessor.IndexOfString(response, splitText, startIndex);
+                    if (endIndex == -1)
+                    {
+                        endIndex = response.Length;
+                    }
+
+                    if (endIndex > startIndex)
+                    {
+                        string segment = response.Substring(startIndex, endIndex - startIndex);
+                        if (!string.IsNullOrEmpty(segment))
+                        {
+                            result.Add(segment);
+                        }
+                    }
+
+                    startIndex = endIndex + splitLength;
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"分割字符串时发生意外错误 An unexpected error occurred while splitting the string: {ex}");
+                Pools.listStringPool.Return(result);
+                return null;
+            }
+        }
+
+        private List<string> ParsePositionedResponse(string response)
         {
             if (string.IsNullOrEmpty(response))
                 return null;
@@ -71,61 +204,78 @@ namespace AutoTranslate
             if (string.IsNullOrEmpty(config.LlmPositionText) || string.IsNullOrEmpty(config.LlmSegmentText))
                 throw new ArgumentException("标记不能为空。The tag cannot be empty.");
 
-            string startTag = config.LlmPositionText;
-            string endTag = config.LlmSegmentText;
+            List<string> results = Pools.listStringPool.Get();
 
-            List<string> results = new List<string>();
-
-            int len = response.Length;
-            int pos = 0;
-            int startTagLen = startTag.Length;
-            int endTagLen = endTag.Length;
-
-            while (pos < len)
+            try
             {
-                int matchStart = response.IndexOf(startTag, pos, StringComparison.OrdinalIgnoreCase);
-                if (matchStart == -1)
+                string startTag = config.LlmPositionText;
+                string endTag = config.LlmSegmentText;
+                int len = response.Length;
+                int pos = 0;
+                int startTagLen = startTag.Length;
+                int endTagLen = endTag.Length;
+
+                while (pos < len)
                 {
-                    string tail = response.Substring(pos);
-                    if (!IsNullOrWhiteSpace(tail))
-                        results.Add(tail.Trim());
-                    break;
+                    int matchStart = TextProcessor.IndexOfString(response, startTag, pos);
+                    if (matchStart == -1)
+                    {
+                        if (TextProcessor.HasNonWhitespace(response, pos, len - pos))
+                        {
+                            string tail = response.Substring(pos);
+                            results.Add(TextProcessor.TrimOnlyIfNeeded(tail));
+                        }
+                        break;
+                    }
+
+                    if (matchStart > pos)
+                    {
+                        if (TextProcessor.HasNonWhitespace(response, pos, matchStart - pos))
+                        {
+                            string chunk = TextProcessor.TrimOnlyIfNeeded(response.Substring(pos, matchStart - pos));
+                            results.Add(chunk);
+                        }
+                    }
+
+                    int i = matchStart + startTagLen;
+
+                    while (i < len && char.IsDigit(response[i]))
+                        i++;
+
+                    if (i + endTagLen <= len && TextProcessor.StartsWithString(response, i, endTag))
+                        pos = i + endTagLen;
+                    else
+                        pos = i;
                 }
 
-                if (matchStart > pos)
+                if (results.Count > 0)
                 {
-                    string chunk = response.Substring(pos, matchStart - pos);
-                    if (!IsNullOrWhiteSpace(chunk))
-                        results.Add(chunk.Trim());
+                    return results;
                 }
-
-                int i = matchStart + startTagLen;
-
-                while (i < len && response[i] >= '0' && response[i] <= '9')
-                    i++;
-
-                if (i + endTagLen <= len &&
-                    string.Compare(response, i, endTag, 0, endTagLen, StringComparison.OrdinalIgnoreCase) == 0)
-                    pos = i + endTagLen;
                 else
-                    pos = i;
+                {
+                    Pools.listStringPool.Return(results);
+                    return null;
+                }
             }
-
-            return results.Count > 0 ? results.ToArray() : null;
+            catch (Exception ex)
+            {
+                Debug.LogError($"解析定位响应时发生错误 An error occurred while parsing the positioning response: {ex}");
+                Pools.listStringPool.Return(results);
+                return null;
+            }
         }
 
-        private static bool IsNullOrWhiteSpace(string value)
-        {
-            return string.IsNullOrEmpty(value) || value.Trim().Length == 0;
-        }
-
-        private string[] ParseFormattedResponse(string responseJson, List<string> texts)
+        private List<string> ParseFormattedResponse(string responseJson, List<string> texts)
         {
             string content = ParseResponse(responseJson);
-            string[] result = null;
+            List<string> result = null;
 
-            if (!string.IsNullOrEmpty(content))
+            try
             {
+                if (string.IsNullOrEmpty(content))
+                    throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
+
                 switch (config.LlmDataFormat)
                 {
                     case AutoTranslateModule.LlmDataFormatType.Json:
@@ -138,57 +288,112 @@ namespace AutoTranslate
                         result = ParsePositionedResponse(content);
                         break;
                 }
-            }
 
-            if (result == null || result.Length == 0)
-            {
-                throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
-            }
+                if (result == null || result.Count == 0)
+                    throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
 
-            if (result.Length != texts.Count)
-            {
-                Debug.LogError("翻译结果数量与请求数量不匹配！The number of translation results does not match the number of requests!");
-                Debug.LogError("请求 Requests：");
-                foreach (var subText in texts)
-                    Debug.Log("      " + subText);
-                Debug.LogError("结果 Results：");
-                foreach (var subText in result)
-                    Debug.Log("      " + subText);
-                throw new InvalidOperationException("翻译结果数量与请求数量不匹配！The number of translation results does not match the number of requests!");
+                if (result.Count != texts.Count)
+                {
+                    Debug.LogError("翻译结果数量与请求数量不匹配！The number of translation results does not match the number of requests!");
+                    Debug.LogError("请求 Requests：");
+                    foreach (var subText in texts)
+                        Debug.Log("      " + subText);
+                    Debug.LogError("结果 Results：");
+                    foreach (var subText in result)
+                        Debug.Log("      " + subText);
+                    throw new InvalidOperationException("翻译结果数量与请求数量不匹配！The number of translation results does not match the number of requests!");
+                }
+
+                return result;
             }
-            return result;
+            catch (Exception)
+            {
+                if (result != null)
+                    Pools.listStringPool.Return(result);
+                throw;
+            }
         }
 
-        private string ParseResponse(string responseJson)
+        public string ParseResponse(string responseJson)
         {
-            JObject jsonResponse;
-
             try
             {
-                jsonResponse = JObject.Parse(responseJson);
+                pooledReader.Reset(responseJson);
+                using (var reader = new JsonTextReader(pooledReader))
+                {
+                    int targetDepth = -1;
+                    bool inChoices = false;
+                    bool inFirstChoice = false;
+                    bool inMessage = false;
+
+                    while (reader.Read())
+                    {
+                        switch (reader.TokenType)
+                        {
+                            case JsonToken.StartArray:
+                                if (reader.Path == "choices")
+                                {
+                                    inChoices = true;
+                                }
+                                break;
+
+                            case JsonToken.StartObject:
+                                if (inChoices && reader.Path == "choices[0]")
+                                {
+                                    inFirstChoice = true;
+                                }
+                                else if (inFirstChoice && reader.Path == "choices[0].message")
+                                {
+                                    inMessage = true;
+                                    targetDepth = reader.Depth + 1;
+                                }
+                                break;
+
+                            case JsonToken.PropertyName:
+                                if (inMessage && (string)reader.Value == "content" && reader.Depth == targetDepth)
+                                {
+                                    reader.Read();
+                                    string result = reader.Value?.ToString();
+
+                                    if (!string.IsNullOrEmpty(result))
+                                        return result;
+
+                                    throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
+                                }
+                                break;
+
+                            case JsonToken.EndObject:
+                                if (inMessage)
+                                {
+                                    inMessage = false;
+                                    targetDepth = -1;
+                                }
+                                else if (inFirstChoice)
+                                {
+                                    inFirstChoice = false;
+                                }
+                                break;
+
+                            case JsonToken.EndArray:
+                                if (inChoices)
+                                {
+                                    inChoices = false;
+                                }
+                                break;
+                        }
+                    }
+                }
+
+                throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
             }
             catch (JsonReaderException ex)
             {
                 throw new InvalidOperationException("响应的JSON格式无效 The JSON format of the response is invalid: ", ex);
             }
-
-            string result = null;
-
-            if (jsonResponse["choices"] is JArray choicesArray)
+            catch (Exception ex)
             {
-                var content = choicesArray[0]["message"]?["content"]?.ToString();
-                if (!string.IsNullOrEmpty(content))
-                {
-                    result = content;
-                }
+                throw new InvalidOperationException($"解析响应失败 Failed to parse response: {ex.Message}");
             }
-
-            if (result == null)
-            {
-                throw new InvalidOperationException("翻译结果为空！The translation result is empty!");
-            }
-
-            return result;
         }
 
         private string ReplaceQuotesWithChinese(string source)
@@ -226,7 +431,7 @@ namespace AutoTranslate
                     return ReplaceQuotesWithChinese(source);
                 case AutoTranslateModule.LlmQuotePreprocessType.None:
                 default:
-                    return source.Replace("\"", "\\\"");
+                    return source;
             }
         }
 
@@ -242,10 +447,13 @@ namespace AutoTranslate
 
                 int id = i + 1;
                 jsonBuilder.Append("{\"id\": ")
-                   .Append(id)
-                   .Append(", \"text\": \"")
-                   .Append(PreprocessQuotes(texts[i].Replace("\\\\", "\\").Replace("\r", "")))
-                   .Append("\"}");
+                           .Append(id)
+                           .Append(", \"text\": \"");
+
+                string processedText = PreprocessQuotes(texts[i]);
+                TextProcessor.AppendEscapeJsonString(processedText, jsonBuilder);
+
+                jsonBuilder.Append("\"}");
             }
 
             jsonBuilder.Append("]");
@@ -272,8 +480,9 @@ namespace AutoTranslate
                     .Append(i + 1)
                     .Append("<!seg!>")
                     .Append(texts[i]);
+                positionedBuilder.Replace("\r", "");
             }
-            return positionedBuilder.ToString().Replace("\r", "");
+            return positionedBuilder.ToString();
         }
 
         private string ConvertListToFormatted(List<string> texts)
@@ -290,47 +499,42 @@ namespace AutoTranslate
             }
         }
 
-        public IEnumerator StartSingleTranslation(List<string> texts, Action<string[]> callback)
+        private string BuildTranslationRequestJson(string formattedTexts)
         {
-            var jsonObject = new JObject
-            {
-                { "model", config.LlmName },
-                {
-                    "messages", new JArray
-                    {
-                        new JObject
-                        {
-                            { "role", "system" },
-                            { "content", config.LlmPrompt }
-                        },
-                        new JObject
-                        {
-                            { "role", "user" },
-                            { "content", ConvertListToFormatted(texts) }
-                        }
-                    }
-                },
-                { "temperature", config.LlmTemperature },
-                { "max_tokens", config.LlmMaxTokens },
-                { "top_p", config.LlmTopP },
-                { "top_k", config.LlmTopK },
-                { "frequency_penalty", config.LlmFrequencyPenalty },
-                { "n", 1 }
-            };
+            payloadBuilder.Length = 0;
 
-            if (!string.IsNullOrEmpty(config.LlmExtraParametersJson))
-            {
-                JObject extraObj = JObject.Parse(config.LlmExtraParametersJson);
+            payloadBuilder
+                .Append("{\"model\":\"").Append(cachedModelName)
+                .Append("\",\"messages\":[{\"role\":\"system\",\"content\":\"")
+                .Append(cachedPrompt)
+                .Append("\"},{\"role\":\"user\",\"content\":\"")
+                .Append(formattedTexts)
+                .Append("\"}],\"temperature\":").Append(cachedTemperature)
+                .Append(",\"max_tokens\":").Append(cachedMaxTokens)
+                .Append(",\"top_p\":").Append(cachedTopP);
 
-                foreach (var property in extraObj.Properties())
-                {
-                    jsonObject[property.Name] = property.Value;
-                }
+            if (cachedTopK > 0)
+            {
+                payloadBuilder.Append(",\"top_k\":").Append(cachedTopK);
             }
 
-            string payloadJson = jsonObject.ToString(Formatting.None);
+            payloadBuilder
+                .Append(",\"frequency_penalty\":").Append(cachedFrequencyPenalty)
+                .Append(",\"n\":1");
 
-            string requestUrl = $"{config.LlmBaseUrl}";
+            if (!string.IsNullOrEmpty(cachedExtraParams))
+            {
+                payloadBuilder.Append(',').Append(cachedExtraParams);
+            }
+
+            payloadBuilder.Append('}');
+
+            return payloadBuilder.ToString();
+        }
+
+        public IEnumerator StartSingleTranslation(List<string> texts, Action<List<string>> callback)
+        {
+            string payloadJson = BuildTranslationRequestJson(TextProcessor.EscapeJsonString(ConvertListToFormatted(texts)));
 
             int retryCount = 0;
             bool needRetry = false;
@@ -342,19 +546,19 @@ namespace AutoTranslate
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
-                        Debug.Log($"正在重试。。。尝试第 {retryCount} 次。Retrying... Attempt time {retryCount}.");
+                        Debug.Log($"[{config.TranslationAPI}] 正在重试。。。尝试第 {retryCount} 次。Retrying... Attempt time {retryCount}.");
                         needRetry = false;
                         yield return new WaitForSecondsRealtime(config.RetryInterval);
                     }
                     else
                     {
-                        Debug.LogError($"多次尝试失败。已重试 {config.MaxRetryCount} 次。翻译中止！Multiple attempts failed. Retried {config.MaxRetryCount} times. Translation aborted!");
+                        Debug.LogError($"[{config.TranslationAPI}] 多次尝试失败。已重试 {config.MaxRetryCount} 次。翻译中止！Multiple attempts failed. Retried {config.MaxRetryCount} times. Translation aborted!");
                         callback?.Invoke(null);
                         yield break;
                     }
                 }
 
-                using (UnityWebRequest request = new UnityWebRequest(requestUrl, "POST"))
+                using (UnityWebRequest request = new UnityWebRequest(config.LlmBaseUrl, "POST"))
                 {
                     byte[] bodyRaw = Encoding.UTF8.GetBytes(payloadJson);
                     request.uploadHandler = new UploadHandlerRaw(bodyRaw);
@@ -373,36 +577,47 @@ namespace AutoTranslate
                     else
                     {
                         string responseJson = request.downloadHandler.text;
-                        string[] translatedTexts = null;
+                        List<string> translatedTexts = null;
+                        bool success = false;
+
                         try
                         {
                             translatedTexts = ParseFormattedResponse(responseJson, texts);
+
+                            if (translatedTexts != null && translatedTexts.Count > 0)
+                            {
+                                callback?.Invoke(translatedTexts);
+                                translatedTexts = null;
+                                success = true;
+                                yield break;
+                            }
+                            else
+                            {
+                                Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
+                                needRetry = true;
+                            }
                         }
                         catch (Exception ex)
                         {
                             Debug.LogError($"解析翻译结果失败 Failed to parse translation result: {ex.Message}");
-                            Debug.LogError($"响应JSON Response JSON:\n{responseJson}");
-                            needRetry = true;
-
-                            continue;
-                        }
-
-                        if (translatedTexts != null && translatedTexts.Length > 0)
-                        {
-                            callback?.Invoke(translatedTexts);
-                        }
-                        else
-                        {
-                            Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
+                            Debug.LogError($"响应JSON Response JSON: \n{responseJson}");
                             needRetry = true;
                         }
-                        yield break;
+                        finally
+                        {
+                            if (!success && translatedTexts != null)
+                            {
+                                Pools.listStringPool.Return(translatedTexts);
+                            }
+                        }
+
+                        continue;
                     }
                 }
             }
         }
 
-        public IEnumerator StartTranslation(List<string> texts, Action<string[]> callback)
+        public IEnumerator StartTranslation(List<string> texts, Action<List<string>> callback)
         {
             if (config.LlmDataFormat == AutoTranslateModule.LlmDataFormatType.Parallel)
             {
@@ -415,25 +630,30 @@ namespace AutoTranslate
         }
 
 
-        public IEnumerator StartParallelBatchTranslation(List<string> texts, Action<string[]> callback)
+        public IEnumerator StartParallelBatchTranslation(List<string> texts, Action<List<string>> callback)
         {
             int totalBatches = texts.Count;
             int completedBatches = 0;
             bool anyFailed = false;
-            string[] batchResults = new string[totalBatches];
+
+            List<string> batchResults = Pools.listStringPool.Get();
+            for (int i = 0; i < totalBatches; i++)
+            {
+                batchResults.Add(null);
+            }
 
             for (int i = 0; i < totalBatches; i++)
             {
                 int batchIndex = i;
                 string singleText = texts[i];
 
-                TranslationManager.instance.StartCoroutine(SendBatchRequest(singleText, batchIndex, (success, results) =>
+                TranslationManager.instance.StartCoroutine(SendBatchRequest(singleText, batchIndex, (success, result) =>
                 {
                     completedBatches++;
 
-                    if (success && results != null)
+                    if (success && !string.IsNullOrEmpty(result))
                     {
-                        batchResults[batchIndex] = results;
+                        batchResults[batchIndex] = result;
                     }
                     else
                     {
@@ -445,11 +665,32 @@ namespace AutoTranslate
                         if (anyFailed)
                         {
                             Debug.LogError("并行批量模式存在失败批次。There are failed batches in parallel batch mode.");
+
+                            Pools.listStringPool.Return(batchResults);
                             callback?.Invoke(null);
                         }
                         else
                         {
-                            callback?.Invoke(batchResults);
+                            bool hasEmptyResult = false;
+                            foreach (var item in batchResults)
+                            {
+                                if (string.IsNullOrEmpty(item))
+                                {
+                                    hasEmptyResult = true;
+                                    break;
+                                }
+                            }
+
+                            if (hasEmptyResult)
+                            {
+                                Debug.LogError("并行批量模式存在空结果。There are empty results in parallel batch mode.");
+                                Pools.listStringPool.Return(batchResults);
+                                callback?.Invoke(null);
+                            }
+                            else
+                            {
+                                callback?.Invoke(batchResults);
+                            }
                         }
                     }
                 }));
@@ -463,43 +704,7 @@ namespace AutoTranslate
 
         private IEnumerator SendBatchRequest(string singleText, int batchIndex, Action<bool, string> batchCallback)
         {
-            var jsonObject = new JObject
-            {
-                { "model", config.LlmName },
-                {
-                    "messages", new JArray
-                    {
-                        new JObject
-                        {
-                            { "role", "system" },
-                            { "content", config.LlmPrompt }
-                        },
-                        new JObject
-                        {
-                            { "role", "user" },
-                            { "content", singleText.Replace("\r", "") }
-                        }
-                    }
-                },
-                { "temperature", config.LlmTemperature },
-                { "max_tokens", config.LlmMaxTokens },
-                { "top_p", config.LlmTopP },
-                { "top_k", config.LlmTopK },
-                { "frequency_penalty", config.LlmFrequencyPenalty },
-                { "n", 1 }
-            };
-
-            if (!string.IsNullOrEmpty(config.LlmExtraParametersJson))
-            {
-                JObject extraObj = JObject.Parse(config.LlmExtraParametersJson);
-                foreach (var property in extraObj.Properties())
-                {
-                    jsonObject[property.Name] = property.Value;
-                }
-            }
-
-            string payloadJson = jsonObject.ToString(Formatting.None);
-            string requestUrl = $"{config.LlmBaseUrl}";
+            string payloadJson = BuildTranslationRequestJson(singleText.Replace("\r", ""));
 
             int retryCount = 0;
             bool needRetry = false;
@@ -511,19 +716,19 @@ namespace AutoTranslate
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
-                        Debug.Log($"批次 {batchIndex} 正在重试... 尝试第 {retryCount} 次。Batch {batchIndex} is retrying... Attempt time {retryCount}.");
+                        Debug.Log($"[{config.TranslationAPI}] 批次 {batchIndex} 正在重试... 尝试第 {retryCount} 次。Batch {batchIndex} is retrying... Attempt time {retryCount}.");
                         needRetry = false;
                         yield return new WaitForSecondsRealtime(config.RetryInterval);
                     }
                     else
                     {
-                        Debug.LogError($"批次 {batchIndex} 多次尝试失败。已重试 {config.MaxRetryCount} 次。Multiple attempts failed in batch {batchIndex}. Retried {config.MaxRetryCount} times. Translation aborted!");
+                        Debug.LogError($"[{config.TranslationAPI}] 批次 {batchIndex} 多次尝试失败。已重试 {config.MaxRetryCount} 次。Multiple attempts failed in batch {batchIndex}. Retried {config.MaxRetryCount} times. Translation aborted!");
                         batchCallback?.Invoke(false, null);
                         yield break;
                     }
                 }
 
-                using (UnityWebRequest request = new UnityWebRequest(requestUrl, "POST"))
+                using (UnityWebRequest request = new UnityWebRequest(config.LlmBaseUrl, "POST"))
                 {
                     byte[] bodyRaw = Encoding.UTF8.GetBytes(payloadJson);
                     request.uploadHandler = new UploadHandlerRaw(bodyRaw);

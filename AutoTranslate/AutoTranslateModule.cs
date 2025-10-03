@@ -15,7 +15,7 @@ namespace AutoTranslate
     {
         public const string GUID = "kleirof.etg.autotranslate";
         public const string NAME = "Auto Translate";
-        public const string VERSION = "1.1.2";
+        public const string VERSION = "1.1.3";
         public const string TEXT_COLOR = "#AA3399";
 
         internal static AutoTranslateModule instance;
@@ -159,6 +159,7 @@ namespace AutoTranslate
             }
             else
                 Log($"{NAME} v{VERSION} started successfully.", TEXT_COLOR);
+            Log($"   Translate Api: {config.TranslationAPI}", TEXT_COLOR);
 
             fontManager?.InitializeFontAfterGameManager(OverrideFont.Value);
             statusLabel?.InitializeStatusLabel();
