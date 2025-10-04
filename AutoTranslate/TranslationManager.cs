@@ -84,9 +84,9 @@ namespace AutoTranslate
                     break;
             }
 
-            fullTextCache = new LRUCache<string, int>(64);
-            translationCache = new LRUCache<string, string>(config.TranslationCacheCapacity);
-            translationQueue = new Queue<TranslationQueueElement>();
+            fullTextCache = new LRUCache<string, int>(64, 64);
+            translationCache = new LRUCache<string, string>(config.TranslationCacheCapacity, Math.Min(config.TranslationCacheCapacity, 1024));
+            translationQueue = new Queue<TranslationQueueElement>(1024);
 
             if (!string.IsNullOrEmpty(config.PresetTranslations))
             {
@@ -137,14 +137,16 @@ namespace AutoTranslate
             batchTranslatedParts = new List<string>(128);
             uniqueTexts = new List<string>(128);
             textControlMap = new Dictionary<string, List<TextObject>>(128);
-            translatedTextBuilder = new StringBuilder(256);
+            translatedTextBuilder = new StringBuilder(1024);
             controlTextMap = new Dictionary<TextObject, List<string>>(128);
 
             finalChunks = new List<string>(128);
 
-            resultBuilder = new StringBuilder(256);
+            resultBuilder = new StringBuilder(1024);
 
             translateOn = config.isConfigValid;
+
+            StartCoroutine(OnStatusLabelInitialized());
         }
 
         internal void ToggleTranslate()
@@ -162,6 +164,19 @@ namespace AutoTranslate
         private void SetStatusLabelText()
         {
             StatusLabelController.instance?.SetText($"AT: {requestedCharacterCount}  Now {(translateOn ? "ON" : "OFF")} ({config.ToggleTranslationKeyBinding})");
+        }
+
+        private IEnumerator OnStatusLabelInitialized()
+        {
+            while (StatusLabelController.instance == null)
+            {
+                yield return null;
+            }
+            SetStatusLabelText(); 
+            if (exceededThreshold == true)
+                StatusLabelController.instance?.SetHighlight();
+
+            yield break;
         }
 
         private static bool FullTextFilter(string text)
@@ -265,16 +280,18 @@ namespace AutoTranslate
 
             for (; ; )
             {
-                while (!translateOn)
+                while (!translateOn || translationQueue.Count == 0)
                 {
                     yield return null;
                 }
 
                 DeduplicateTexts();
+                yield return null;
 
                 if (uniqueTexts.Count > 0)
                 {
                     int count = GenerateBatch();
+                    yield return null;
                     yield return StartCoroutine(TranslateBatchCoroutine(count));
                 }
 
@@ -609,6 +626,7 @@ namespace AutoTranslate
                     Debug.Log("      " + subText);
                 Debug.Log("}");
             }
+            yield return null;
 
             yield return StartCoroutine(translationService.StartTranslation(
                 batchSubTexts,
@@ -1023,16 +1041,7 @@ namespace AutoTranslate
                                   ?? new List<KeyValuePair<string, string>>();
                 }
 
-                var newPairs = new List<KeyValuePair<string, string>>();
-                var node = translationCache.GetOrder().Last;
-                while (node != null)
-                {
-                    if (node.Value != null)
-                    {
-                        newPairs.Add(new KeyValuePair<string, string>(node.Value.Key, node.Value.Value));
-                    }
-                    node = node.Previous;
-                }
+                List<KeyValuePair<string, string>> newPairs = translationCache. GetOrderedKeyValuePairsReverse();
 
                 var mergedPairs = existingPairs
                     .Concat(newPairs)

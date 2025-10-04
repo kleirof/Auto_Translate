@@ -18,7 +18,7 @@ namespace AutoTranslate
         private string action = "/translate";
         private string version = "3.0";
 
-        private StringBuilder stringBuilder = new StringBuilder(256);
+        private StringBuilder stringBuilder = new StringBuilder(1024);
         private ReusableStringReader pooledReader = new ReusableStringReader();
 
         public AzureTranslationService(AutoTranslateConfig config)
@@ -186,6 +186,7 @@ namespace AutoTranslate
             {
                 if (needRetry)
                 {
+                    yield return null;
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
@@ -209,6 +210,7 @@ namespace AutoTranslate
                     request.SetRequestHeader("Ocp-Apim-Subscription-Key", subscriptionKey);
                     request.SetRequestHeader("Ocp-Apim-Subscription-Region", region);
 
+                    yield return null;
                     yield return request.SendWebRequest();
 
                     if (request.isNetworkError || request.isHttpError)
@@ -221,24 +223,10 @@ namespace AutoTranslate
                     {
                         string responseJson = request.downloadHandler.text;
                         List<string> translatedTexts = null;
-                        bool success = false;
 
                         try
                         {
                             translatedTexts = ParseResponse(responseJson);
-
-                            if (translatedTexts != null && translatedTexts.Count > 0)
-                            {
-                                callback?.Invoke(translatedTexts);
-                                translatedTexts = null;
-                                success = true;
-                                yield break;
-                            }
-                            else
-                            {
-                                Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
-                                needRetry = true;
-                            }
                         }
                         catch (Exception ex)
                         {
@@ -246,12 +234,18 @@ namespace AutoTranslate
                             Debug.LogError($"响应JSON Response JSON：\n{responseJson}");
                             needRetry = true;
                         }
-                        finally
+
+                        if (translatedTexts != null && translatedTexts.Count > 0)
                         {
-                            if (!success && translatedTexts != null)
-                            {
-                                Pools.listStringPool.Return(translatedTexts);
-                            }
+                            yield return null;
+                            callback?.Invoke(translatedTexts);
+                            translatedTexts = null;
+                            yield break;
+                        }
+                        else
+                        {
+                            Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
+                            needRetry = true;
                         }
 
                         continue;

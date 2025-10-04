@@ -5,48 +5,57 @@ namespace AutoTranslate
 {
     public class LRUCache<TKey, TValue>
     {
-        private readonly int _capacity;
-        private readonly Dictionary<TKey, LinkedListNode<CacheItem>> _cache;
-        private readonly LinkedList<CacheItem> _order;
-
-        private readonly ObjectPool<LinkedListNode<CacheItem>> _nodePool;
-        private readonly ObjectPool<CacheItem> _cacheItemPool;
-
-        public class CacheItem
+        private class LRUNode
         {
             public TKey Key;
             public TValue Value;
+            public LRUNode Previous;
+            public LRUNode Next;
 
-            public CacheItem() { }
+            public LRUNode(TKey key, TValue value)
+            {
+                Key = key;
+                Value = value;
+            }
 
-            public void Reset(TKey key, TValue value)
+            public void Update(TKey key, TValue value)
             {
                 Key = key;
                 Value = value;
             }
         }
 
-        public LRUCache(int capacity)
+        private readonly int _capacity;
+        private readonly Dictionary<TKey, LRUNode> _cache;
+        private readonly ObjectPool<LRUNode> _nodePool;
+        private LRUNode _head;
+        private LRUNode _tail;
+
+        public LRUCache(int capacity, int preallocateSize = 0)
         {
             if (capacity <= 0)
                 throw new ArgumentException("容量必须大于0。Capacity must be greater than zero.");
 
             _capacity = capacity;
-            _cache = new Dictionary<TKey, LinkedListNode<CacheItem>>(capacity);
-            _order = new LinkedList<CacheItem>();
-
-            _nodePool = new ObjectPool<LinkedListNode<CacheItem>>(() => new LinkedListNode<CacheItem>(null), capacity, node => node.Value = null);
-
-            _cacheItemPool = new ObjectPool<CacheItem>(() => new CacheItem(), capacity, item => item.Reset(default, default));
+            _cache = new Dictionary<TKey, LRUNode>(capacity);
+            _nodePool = new ObjectPool<LRUNode>(
+                () => new LRUNode(default, default),
+                capacity,
+                node => {
+                    node.Previous = null;
+                    node.Next = null;
+                    node.Key = default;
+                    node.Value = default;
+                },
+                Math.Min(Math.Max(preallocateSize, 0), capacity));
         }
 
         public TValue Get(TKey key)
         {
             if (_cache.TryGetValue(key, out var node))
             {
-                _order.Remove(node);
-                _order.AddFirst(node);
-                return node.Value.Value;
+                MoveToHead(node);
+                return node.Value;
             }
             else
             {
@@ -58,10 +67,8 @@ namespace AutoTranslate
         {
             if (_cache.TryGetValue(key, out var node))
             {
-                _order.Remove(node);
-                _order.AddFirst(node);
-
-                value = node.Value.Value;
+                MoveToHead(node);
+                value = node.Value;
                 return true;
             }
             else
@@ -75,29 +82,21 @@ namespace AutoTranslate
         {
             if (_cache.TryGetValue(key, out var node))
             {
-                if (!EqualityComparer<TValue>.Default.Equals(node.Value.Value, value))
-                    node.Value.Reset(key, value);
+                if (!EqualityComparer<TValue>.Default.Equals(node.Value, value))
+                    node.Update(key, value);
+                MoveToHead(node);
             }
             else
             {
                 if (_cache.Count >= _capacity)
                 {
-                    var leastUsedNode = _order.Last;
-                    _cache.Remove(leastUsedNode.Value.Key);
-                    _order.RemoveLast();
-
-                    _cacheItemPool.Return(leastUsedNode.Value);
-                    _nodePool.Return(leastUsedNode);
+                    RemoveTail();
                 }
 
-                var cacheItem = _cacheItemPool.Get();
-                cacheItem.Reset(key, value);
-
-                node = _nodePool.Get();
-                node.Value = cacheItem;
-
-                _order.AddFirst(node);
-                _cache[key] = node;
+                var newNode = _nodePool.Get();
+                newNode.Update(key, value);
+                AddToHead(newNode);
+                _cache[key] = newNode;
             }
         }
 
@@ -106,34 +105,64 @@ namespace AutoTranslate
             return _cache.ContainsKey(key);
         }
 
+        private void MoveToHead(LRUNode node)
+        {
+            if (node == _head) return;
+
+            if (node.Previous != null) node.Previous.Next = node.Next;
+            if (node.Next != null) node.Next.Previous = node.Previous;
+            if (node == _tail) _tail = node.Previous;
+
+            AddToHead(node);
+        }
+
+        private void AddToHead(LRUNode node)
+        {
+            node.Previous = null;
+            node.Next = _head;
+
+            if (_head != null) _head.Previous = node;
+            _head = node;
+
+            if (_tail == null) _tail = node;
+        }
+
+        private void RemoveTail()
+        {
+            if (_tail == null) return;
+
+            _cache.Remove(_tail.Key);
+            var toRemove = _tail;
+
+            _tail = _tail.Previous;
+            if (_tail != null) _tail.Next = null;
+            if (toRemove == _head) _head = null;
+
+            _nodePool.Return(toRemove);
+        }
+
         public List<KeyValuePair<TKey, TValue>> GetOrderedKeyValuePairs()
         {
             var orderedList = new List<KeyValuePair<TKey, TValue>>(_cache.Count);
-            var node = _order.First;
+            var node = _head;
             while (node != null)
             {
-                if (node.Value != null)
-                {
-                    orderedList.Add(new KeyValuePair<TKey, TValue>(node.Value.Key, node.Value.Value));
-                }
+                orderedList.Add(new KeyValuePair<TKey, TValue>(node.Key, node.Value));
                 node = node.Next;
             }
             return orderedList;
         }
 
-        public int GetCapacity()
+        public List<KeyValuePair<TKey, TValue>> GetOrderedKeyValuePairsReverse()
         {
-            return _capacity;
-        }
-
-        public Dictionary<TKey, LinkedListNode<CacheItem>> GetCache() 
-        {
-            return _cache;
-        }
-
-        public LinkedList<CacheItem> GetOrder() 
-        {
-            return _order;
+            var orderedList = new List<KeyValuePair<TKey, TValue>>(_cache.Count);
+            var node = _tail;
+            while (node != null)
+            {
+                orderedList.Add(new KeyValuePair<TKey, TValue>(node.Key, node.Value));
+                node = node.Previous;
+            }
+            return orderedList;
         }
     }
 }

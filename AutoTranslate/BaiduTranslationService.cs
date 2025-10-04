@@ -176,6 +176,7 @@ namespace AutoTranslate
             {
                 if (needRetry)
                 {
+                    yield return null;
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
@@ -193,6 +194,7 @@ namespace AutoTranslate
 
                 using (UnityWebRequest request = UnityWebRequest.Get(url))
                 {
+                    yield return null;
                     yield return request.SendWebRequest();
 
                     if (request.isNetworkError || request.isHttpError)
@@ -205,24 +207,10 @@ namespace AutoTranslate
                     {
                         string responseJson = request.downloadHandler.text;
                         List<string> translatedTexts = null;
-                        bool success = false;
 
                         try
                         {
                             translatedTexts = ParseResponse(responseJson);
-
-                            if (translatedTexts != null && translatedTexts.Count > 0)
-                            {
-                                callback?.Invoke(translatedTexts);
-                                translatedTexts = null;
-                                success = true;
-                                yield break;
-                            }
-                            else
-                            {
-                                Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
-                                needRetry = true;
-                            }
                         }
                         catch (Exception ex)
                         {
@@ -230,12 +218,18 @@ namespace AutoTranslate
                             Debug.LogError($"响应JSON Response JSON: \n{responseJson}");
                             needRetry = true;
                         }
-                        finally
+
+                        if (translatedTexts != null && translatedTexts.Count > 0)
                         {
-                            if (!success && translatedTexts != null)
-                            {
-                                Pools.listStringPool.Return(translatedTexts);
-                            }
+                            yield return null;
+                            callback?.Invoke(translatedTexts);
+                            translatedTexts = null;
+                            yield break;
+                        }
+                        else
+                        {
+                            Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
+                            needRetry = true;
                         }
 
                         continue;
@@ -250,7 +244,7 @@ namespace AutoTranslate
             using (MD5 md5 = MD5.Create())
             {
                 byte[] hashBytes = md5.ComputeHash(Encoding.UTF8.GetBytes(rawString));
-                StringBuilder sb = new StringBuilder(256);
+                StringBuilder sb = new StringBuilder(1024);
                 foreach (byte b in hashBytes)
                 {
                     sb.Append(b.ToString("x2"));

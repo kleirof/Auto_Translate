@@ -20,7 +20,7 @@ namespace AutoTranslate
         private string version = "2018-03-21";
 
         private ReusableStringReader pooledReader = new ReusableStringReader();
-        private StringBuilder stringBuilder = new StringBuilder(256);
+        private StringBuilder stringBuilder = new StringBuilder(1024);
 
         public TencentTranslationService(AutoTranslateConfig config)
         {
@@ -184,6 +184,7 @@ namespace AutoTranslate
             {
                 if (needRetry)
                 {
+                    yield return null;
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
@@ -210,6 +211,7 @@ namespace AutoTranslate
                     request.SetRequestHeader("X-TC-Version", version);
                     request.SetRequestHeader("X-TC-Region", config.TencentRegion);
 
+                    yield return null;
                     yield return request.SendWebRequest();
 
                     if (request.isNetworkError || request.isHttpError)
@@ -222,24 +224,10 @@ namespace AutoTranslate
                     {
                         string responseJson = request.downloadHandler.text;
                         List<string> translatedTexts = null;
-                        bool success = false;
 
                         try
                         {
                             translatedTexts = ParseResponse(responseJson);
-
-                            if (translatedTexts != null && translatedTexts.Count > 0)
-                            {
-                                callback?.Invoke(translatedTexts);
-                                translatedTexts = null;
-                                success = true;
-                                yield break;
-                            }
-                            else
-                            {
-                                Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
-                                needRetry = true;
-                            }
                         }
                         catch (Exception ex)
                         {
@@ -247,12 +235,18 @@ namespace AutoTranslate
                             Debug.LogError($"响应JSON Response JSON：\n{responseJson}");
                             needRetry = true;
                         }
-                        finally
+
+                        if (translatedTexts != null && translatedTexts.Count > 0)
                         {
-                            if (!success && translatedTexts != null)
-                            {
-                                Pools.listStringPool.Return(translatedTexts);
-                            }
+                            yield return null;
+                            callback?.Invoke(translatedTexts);
+                            translatedTexts = null;
+                            yield break;
+                        }
+                        else
+                        {
+                            Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
+                            needRetry = true;
                         }
 
                         continue;
@@ -288,7 +282,7 @@ namespace AutoTranslate
 
         private string ConvertToHexString(byte[] bytes)
         {
-            StringBuilder sb = new StringBuilder(256);
+            StringBuilder sb = new StringBuilder(1024);
             foreach (byte b in bytes)
             {
                 sb.Append(b.ToString("x2"));

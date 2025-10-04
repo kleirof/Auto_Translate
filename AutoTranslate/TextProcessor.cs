@@ -8,8 +8,8 @@ namespace AutoTranslate
 {
     public static class TextProcessor
     {
-        private static StringBuilder escapeBuilder = new StringBuilder(256);
-        private static StringBuilder unescapeBuilder = new StringBuilder(256);
+        private static StringBuilder escapeBuilder = new StringBuilder(1024);
+        private static StringBuilder unescapeBuilder = new StringBuilder(1024);
 
         public static bool StartsWithString(string source, int startIndex, string pattern)
         {

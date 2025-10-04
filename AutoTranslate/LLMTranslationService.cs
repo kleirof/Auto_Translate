@@ -14,11 +14,11 @@ namespace AutoTranslate
     {
         private AutoTranslateConfig config;
 
-        private StringBuilder builder = new StringBuilder(256);
-        private StringBuilder jsonBuilder = new StringBuilder(256);
-        private StringBuilder positionedBuilder = new StringBuilder(256);
+        private StringBuilder builder = new StringBuilder(1024);
+        private StringBuilder jsonBuilder = new StringBuilder(1024);
+        private StringBuilder positionedBuilder = new StringBuilder(1024);
         private readonly string[] cachedSplitPattern = new string[1];
-        private StringBuilder payloadBuilder = new StringBuilder(256);
+        private StringBuilder payloadBuilder = new StringBuilder(1024);
 
         private ReusableStringReader pooledReader = new ReusableStringReader();
 
@@ -543,6 +543,7 @@ namespace AutoTranslate
             {
                 if (needRetry)
                 {
+                    yield return null;
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
@@ -566,6 +567,7 @@ namespace AutoTranslate
                     request.SetRequestHeader("Content-Type", "application/json");
                     request.SetRequestHeader("Authorization", $"Bearer {config.LlmApiKey}");
 
+                    yield return null;
                     yield return request.SendWebRequest();
 
                     if (request.isNetworkError || request.isHttpError)
@@ -578,24 +580,10 @@ namespace AutoTranslate
                     {
                         string responseJson = request.downloadHandler.text;
                         List<string> translatedTexts = null;
-                        bool success = false;
 
                         try
                         {
                             translatedTexts = ParseFormattedResponse(responseJson, texts);
-
-                            if (translatedTexts != null && translatedTexts.Count > 0)
-                            {
-                                callback?.Invoke(translatedTexts);
-                                translatedTexts = null;
-                                success = true;
-                                yield break;
-                            }
-                            else
-                            {
-                                Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
-                                needRetry = true;
-                            }
                         }
                         catch (Exception ex)
                         {
@@ -603,12 +591,18 @@ namespace AutoTranslate
                             Debug.LogError($"响应JSON Response JSON: \n{responseJson}");
                             needRetry = true;
                         }
-                        finally
+
+                        if (translatedTexts != null && translatedTexts.Count > 0)
                         {
-                            if (!success && translatedTexts != null)
-                            {
-                                Pools.listStringPool.Return(translatedTexts);
-                            }
+                            yield return null;
+                            callback?.Invoke(translatedTexts);
+                            translatedTexts = null;
+                            yield break;
+                        }
+                        else
+                        {
+                            Debug.LogError("翻译失败，未获得翻译结果！Translation failed, no translation result obtained!");
+                            needRetry = true;
                         }
 
                         continue;
@@ -713,6 +707,7 @@ namespace AutoTranslate
             {
                 if (needRetry)
                 {
+                    yield return null;
                     if (retryCount < config.MaxRetryCount)
                     {
                         retryCount++;
@@ -736,6 +731,7 @@ namespace AutoTranslate
                     request.SetRequestHeader("Content-Type", "application/json");
                     request.SetRequestHeader("Authorization", $"Bearer {config.LlmApiKey}");
 
+                    yield return null;
                     yield return request.SendWebRequest();
 
                     if (request.isNetworkError || request.isHttpError)
@@ -762,6 +758,7 @@ namespace AutoTranslate
 
                         if (translatedText != null)
                         {
+                            yield return null;
                             batchCallback?.Invoke(true, translatedText);
                         }
                         else

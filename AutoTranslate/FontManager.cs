@@ -35,7 +35,7 @@ namespace AutoTranslate
         internal Font potentialItemTipsDynamicBaseFont;
         internal string itemTipsModuleText;
 
-        private StringBuilder currentLine = new StringBuilder(256);
+        private StringBuilder currentLine = new StringBuilder(1024);
         private List<string> wrappedLines = new List<string>(128);
 
         internal readonly Vector2 itemTipsDefaultAnchor = new Vector2(0.1f, 0.5f);
@@ -45,7 +45,7 @@ namespace AutoTranslate
         internal Vector2 itemTipsPivot;
 
         internal int originalLineHeight;
-        private StringBuilder tokenBuilder = new StringBuilder(256);
+        private StringBuilder tokenBuilder = new StringBuilder(1024);
 
         public FontManager()
         {

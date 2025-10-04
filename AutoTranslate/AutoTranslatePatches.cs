@@ -16,7 +16,7 @@ namespace AutoTranslate
     {
         private static AutoTranslateConfig config = AutoTranslateModule.instance.config;
 
-        private static StringBuilder addBracketBuilder = new StringBuilder(256);
+        private static StringBuilder addBracketBuilder = new StringBuilder(1024);
 
         public static void EmitCall<T>(this ILCursor iLCursor, string methodName, Type[] parameters = null, Type[] generics = null)
         {
