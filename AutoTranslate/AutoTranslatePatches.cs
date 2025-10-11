@@ -400,7 +400,6 @@ namespace AutoTranslate
                             __result = __instance.tokens;
                             return false;
                         }
-                        __instance.tokens.ReleaseItems();
                         __instance.tokens.Release();
                     }
                     __instance.tokens = FontManager.instance?.Tokenize(text);
