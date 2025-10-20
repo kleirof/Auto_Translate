@@ -583,7 +583,7 @@ namespace AutoTranslate
                         {
                             OnTranslationFinishTextObject(control, text, translatedText, true);
                             RemoveTextFromControlTextMap(control, text);
-                            Pools.textObjectPool.Return(control);
+                            TextObjectManager.SafeRelease(control);
                         }
                         Pools.listTextObjectPool.Return(controls);
                         textControlMap.Remove(text);
@@ -661,7 +661,7 @@ namespace AutoTranslate
                                     foreach (var control in controls)
                                     {
                                         RemoveTextFromControlTextMap(control, originalText);
-                                        Pools.textObjectPool.Return(control);
+                                        TextObjectManager.SafeRelease(control);
                                     }
                                     Pools.listTextObjectPool.Return(controls);
                                     textControlMap.Remove(originalText);
@@ -706,7 +706,7 @@ namespace AutoTranslate
                                 {
                                     OnTranslationFinishTextObject(control, originalText, translatedText, true);
                                     RemoveTextFromControlTextMap(control, originalText);
-                                    Pools.textObjectPool.Return(control);
+                                    TextObjectManager.SafeRelease(control);
                                 }
                                 Pools.listTextObjectPool.Return(controls);
                                 textControlMap.Remove(originalText);
@@ -730,7 +730,7 @@ namespace AutoTranslate
                 return;
             if (!translateOn)
                 return;
-            if (cachedObject != null && control == cachedObject.Object && text.Equals(cachedString))
+            if (cachedObject != null && cachedObject.IsAlive && control == cachedObject.Object && text.Equals(cachedString))
                 return;
 
             if (!NeedToTranslate(text))
@@ -742,8 +742,7 @@ namespace AutoTranslate
                 return;
             }
 
-            TextObject textObject = Pools.textObjectPool.Get();
-            textObject.Set(control);
+            TextObject textObject = TextObjectManager.GetTextObject(control);
 
             cachedString = text;
             cachedObject = textObject;
@@ -799,6 +798,9 @@ namespace AutoTranslate
                     continue;
                 SubmitRequest(textObject, chunkToQueue);
             }
+
+            if (finalChunks.Count > 1)
+                textObject.Retain(finalChunks.Count - 1);
 
             if (!isProcessingQueue)
                 StartCoroutine(ProcessTranslationQueue());
@@ -883,6 +885,9 @@ namespace AutoTranslate
                 return;
 
             object target = textObject.Object;
+            if (target == null)
+                return;
+
             OnTranslationFinish(target, original, result, setFullTextCached);
         }
 

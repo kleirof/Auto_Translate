@@ -789,5 +789,35 @@ namespace AutoTranslate
                 }
             }
         }
+
+        [HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.Destroy), new System.Type[] { typeof(UnityEngine.Object), typeof(float) })]
+        public class ObjectDestroyPatchClass
+        {
+            [HarmonyPrefix]
+            static void DestroyPrefix(System.Object obj, float t)
+            {
+                TextObjectManager.MarkIfTarget(obj);
+            }
+        }
+
+        [HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.DestroyImmediate), new System.Type[] { typeof(UnityEngine.Object), typeof(bool) })]
+        public class ObjectDestroyImmediatePatchClass
+        {
+            [HarmonyPrefix]
+            static void DestroyImmediatePrefix(System.Object obj, bool allowDestroyingAssets)
+            {
+                TextObjectManager.MarkIfTarget(obj);
+            }
+        }
+
+        [HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.DestroyObject), new System.Type[] { typeof(UnityEngine.Object), typeof(float) })]
+        public class ObjectDestroyObjectPatchClass
+        {
+            [HarmonyPrefix]
+            static void DestroyObjectPrefix(System.Object obj, float t)
+            {
+                TextObjectManager.MarkIfTarget(obj);
+            }
+        }
     }
 }
