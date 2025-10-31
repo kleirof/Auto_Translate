@@ -184,7 +184,7 @@ namespace AutoTranslate
             return TextProcessor.StartsWithString(text, 0, "Enter the Gungeon");
         }
 
-        private bool HasLineMatchingFilter(string text)
+        internal static bool HasLineMatchingFilter(string text)
         {
             int lineStart = 0;
             int length = text.Length;
@@ -912,7 +912,7 @@ namespace AutoTranslate
                     bool isDefaultLabel = dfLabel.gameObject?.name == "DefaultLabel";
                     float originalHeight = dfLabel.Height;
 
-                    dfFontBase fontBase = FontManager.instance.dfFontBase;
+                    dfFontBase fontBase = FontManager.instance?.dfFontBase;
                     if (fontBase != null && dfLabel.Font != fontBase)
                     {
                         dfLabel.Font = fontBase;
@@ -945,7 +945,7 @@ namespace AutoTranslate
                 int startIndex = TextProcessor.IndexOfString(originalText, original);
                 if (startIndex != -1)
                 {
-                    dfFontBase fontBase = FontManager.instance.dfFontBase;
+                    dfFontBase fontBase = FontManager.instance?.dfFontBase;
                     if (fontBase != null && dfButton.Font != fontBase)
                     {
                         dfButton.Font = fontBase;
@@ -991,7 +991,7 @@ namespace AutoTranslate
                 int startIndex = TextProcessor.IndexOfString(originalText, original);
                 if (startIndex != -1)
                 {
-                    tk2dFontData tk2dFont = FontManager.instance.tk2dFont;
+                    tk2dFontData tk2dFont = FontManager.instance?.tk2dFont;
                     if (tk2dFont != null && textMesh.font != tk2dFont)
                         FontManager.SetTextMeshFont(textMesh, tk2dFont);
 

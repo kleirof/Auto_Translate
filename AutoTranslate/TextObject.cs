@@ -17,7 +17,7 @@ namespace AutoTranslate
         private List<int> parentGOIDs;
 
         public object Target => target;
-        public bool IsAlive => !isDead && target != null;
+        public bool IsAlive => !isDead && target != null && !target.Equals(null);
         public object Object => IsAlive ? target : null;
         public bool IsTargetType => isTargetType;
         public int InstanceID => isTargetType ? cachedInstanceID : 0;
@@ -61,12 +61,12 @@ namespace AutoTranslate
 
                 Transform t = comp.transform;
                 GameObject g = comp.gameObject;
-                if (g != null)
+                if (g != null && !g.Equals(null))
                 {
                     parentGOIDs.Add(g.GetInstanceID());
                     t = g.transform.parent;
                 }
-                while (t != null)
+                while (t != null && !t.Equals(null))
                 {
                     parentGOIDs.Add(t.gameObject.GetInstanceID());
                     t = t.parent;

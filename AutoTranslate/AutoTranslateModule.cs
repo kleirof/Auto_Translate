@@ -15,7 +15,7 @@ namespace AutoTranslate
     {
         public const string GUID = "kleirof.etg.autotranslate";
         public const string NAME = "Auto Translate";
-        public const string VERSION = "1.1.6";
+        public const string VERSION = "1.2.0";
         public const string TEXT_COLOR = "#AA3399";
 
         internal static AutoTranslateModule instance;
@@ -38,6 +38,9 @@ namespace AutoTranslate
         private ConfigEntry<string> CachedTranslations;
         private ConfigEntry<bool> AutoSaveCachedTranslationsUponQuit;
         private ConfigEntry<bool> LogRequestedTexts;
+        private ConfigEntry<bool> TranslateTextFromDfLabel;
+        private ConfigEntry<bool> TranslateTextFromDfButton;
+        private ConfigEntry<bool> TranslateTextFromTk2dTextMesh;
 
         private ConfigEntry<OverrideFontType> OverrideFont;
         private ConfigEntry<string> FontAssetBundleName;
@@ -296,6 +299,27 @@ namespace AutoTranslate
                 "LogRequestedTexts",
                 false,
                 "是否在日志中显示请求翻译的文本。Whether to log the text requested for translation."
+                );
+
+            TranslateTextFromDfLabel = Config.Bind(
+                "1.General",
+                "TranslateTextFromDfLabel",
+                true,
+                "翻译DfLabel中的文本。Translate the text in DfLabel."
+                );
+
+            TranslateTextFromDfButton = Config.Bind(
+                "1.General",
+                "TranslateTextFromDfButton",
+                true,
+                "翻译DfButton中的文本。Translate the text in DfButton."
+                );
+
+            TranslateTextFromTk2dTextMesh = Config.Bind(
+                "1.General",
+                "TranslateTextFromTk2dTextMesh",
+                true,
+                "翻译Tk2dTextMesh中的文本。Translate the text in Tk2dTextMesh."
                 );
 
             OverrideFont = Config.Bind(
@@ -667,6 +691,9 @@ namespace AutoTranslate
                 CachedTranslations = CachedTranslations.Value,
                 AutoSaveCachedTranslationsUponQuit = AutoSaveCachedTranslationsUponQuit.Value,
                 LogRequestedTexts = LogRequestedTexts.Value,
+                TranslateTextFromDfLabel = TranslateTextFromDfLabel.Value,
+                TranslateTextFromDfButton = TranslateTextFromDfButton.Value,
+                TranslateTextFromTk2dTextMesh = TranslateTextFromTk2dTextMesh.Value,
 
                 OverrideFont = OverrideFont.Value,
                 FontAssetBundleName = FontAssetBundleName.Value,

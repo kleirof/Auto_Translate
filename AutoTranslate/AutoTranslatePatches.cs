@@ -121,7 +121,10 @@ namespace AutoTranslate
 
         private static void DfLabelTextAddCall(dfLabel instance)
         {
-            dfFontBase fontBase = FontManager.instance.dfFontBase;
+            if (instance == null || instance.Equals(null))
+                return;
+
+            dfFontBase fontBase = FontManager.instance?.dfFontBase;
             if (fontBase != null && instance.Font != fontBase)
             {
                 instance.Font = fontBase;
@@ -132,12 +135,16 @@ namespace AutoTranslate
                     instance.TextScale = config.DfTextScaleExpandToValue;
             }
 
-            TranslationManager.instance.AddTranslationRequest(instance.text, instance);
+            if (config.TranslateTextFromDfLabel)
+                TranslationManager.instance.AddTranslationRequest(instance.text, instance);
         }
 
         private static void DfButtonTextAddCall(dfButton instance)
         {
-            dfFontBase fontBase = FontManager.instance.dfFontBase;
+            if (instance == null || instance.Equals(null))
+                return;
+
+            dfFontBase fontBase = FontManager.instance?.dfFontBase;
             if (fontBase != null && instance.Font != fontBase)
             {
                 instance.Font = fontBase;
@@ -149,13 +156,14 @@ namespace AutoTranslate
             }
             string added = AddMissingBracket(instance.text);
 
-            if (added != instance.text)
+            if (!added.Equals(instance.text))
             {
                 instance.text = added;
                 instance.Invalidate();
             }
 
-            TranslationManager.instance.AddTranslationRequest(instance.text, instance);
+            if (config.TranslateTextFromDfButton)
+                TranslationManager.instance.AddTranslationRequest(instance.text, instance);
         }
 
         [HarmonyPatch(typeof(dfLabel), nameof(dfLabel.Text), MethodType.Setter)]
@@ -241,8 +249,8 @@ namespace AutoTranslate
         {
             public static bool LoadFontPrefix(ref Font __result)
             {
-                FieldInfo fieldInfo = FontManager.instance.itemTipsModuleType.GetField("_gameFont", BindingFlags.NonPublic | BindingFlags.Instance);
-                dfFontBase fontBase = FontManager.instance.dfFontBase;
+                FieldInfo fieldInfo = FontManager.instance?.itemTipsModuleType.GetField("_gameFont", BindingFlags.NonPublic | BindingFlags.Instance);
+                dfFontBase fontBase = FontManager.instance?.dfFontBase;
                 if (fontBase != null && fontBase is dfDynamicFont dynamicFont)
                 {
                     FontManager.instance.potentialItemTipsDynamicBaseFont = dynamicFont.baseFont;
@@ -279,14 +287,15 @@ namespace AutoTranslate
             [HarmonyPostfix]
             public static void Tk2dTextMeshTextPostfix(tk2dTextMesh __instance)
             {
-                tk2dFontData tk2dFont = FontManager.instance.tk2dFont;
+                tk2dFontData tk2dFont = FontManager.instance?.tk2dFont;
                 if (tk2dFont != null && __instance.font != tk2dFont)
                 {
                     FontManager.SetTextMeshFont(__instance, tk2dFont);
                 }
                 if (__instance.data != null && __instance.data.text != null)
                 {
-                    TranslationManager.instance.AddTranslationRequest(__instance.data.text, __instance);
+                    if (config.TranslateTextFromTk2dTextMesh)
+                        TranslationManager.instance.AddTranslationRequest(__instance.data.text, __instance);
                 }
             }
         }
@@ -297,10 +306,11 @@ namespace AutoTranslate
             [HarmonyPrefix]
             public static bool Tk2dTextMeshFontPrefix(tk2dTextMesh __instance)
             {
-                tk2dFontData tk2dFont = FontManager.instance.tk2dFont;
+                tk2dFontData tk2dFont = FontManager.instance?.tk2dFont;
                 if (tk2dFont != null && __instance.font != tk2dFont)
                 {
-                    FontManager.SetTextMeshFont(__instance, tk2dFont);
+                    if (config.TranslateTextFromTk2dTextMesh)
+                        FontManager.SetTextMeshFont(__instance, tk2dFont);
                 }
                 return false;
             }
@@ -454,7 +464,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             public static bool CheckFontsForLanguagePrefix()
             {
-                if (FontManager.instance.tk2dFont != null)
+                if (FontManager.instance?.tk2dFont != null)
                     return false;
                 return true;
             }
@@ -466,7 +476,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             public static bool CheckFontsForLanguagePrefix()
             {
-                if (FontManager.instance.dfFontBase != null)
+                if (FontManager.instance?.dfFontBase != null)
                     return false;
                 return true;
             }
@@ -478,7 +488,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             public static bool CheckFontsForLanguagePrefix()
             {
-                if (FontManager.instance.dfFontBase != null)
+                if (FontManager.instance?.dfFontBase != null)
                     return false;
                 return true;
             }
@@ -683,7 +693,7 @@ namespace AutoTranslate
         {
             public static void RepositionPostfix(SLabel __instance)
             {
-                FontManager.instance.ItemTipsReposition(__instance);
+                FontManager.instance?.ItemTipsReposition(__instance);
             }
         }
 
@@ -719,7 +729,7 @@ namespace AutoTranslate
 
             private static int MeasureTextPatchCall_1(int orig, Font font2)
             {
-                if (FontManager.instance.potentialItemTipsDynamicBaseFont != null &&
+                if (FontManager.instance?.potentialItemTipsDynamicBaseFont != null &&
                     font2 == FontManager.instance.potentialItemTipsDynamicBaseFont)
                     return Mathf.RoundToInt(font2.fontSize * config.ItemTipsFontScale);
                 return orig;
@@ -727,7 +737,7 @@ namespace AutoTranslate
 
             private static bool MeasureTextPatchCall_2(bool orig, Font font2, char c, out CharacterInfo characterInfo2)
             {
-                if (FontManager.instance.potentialItemTipsDynamicBaseFont != null &&
+                if (FontManager.instance?.potentialItemTipsDynamicBaseFont != null &&
                     font2 == FontManager.instance.potentialItemTipsDynamicBaseFont)
                     return font2.GetCharacterInfo(c, out characterInfo2, Mathf.RoundToInt(font2.fontSize * config.ItemTipsFontScale));
                 return font2.GetCharacterInfo(c, out characterInfo2);
@@ -741,7 +751,7 @@ namespace AutoTranslate
             public static void RenderPrefix(SLabel __instance)
             {
                 if (__instance.Font is Font font &&
-                    FontManager.instance.potentialItemTipsDynamicBaseFont != null &&
+                    FontManager.instance?.potentialItemTipsDynamicBaseFont != null &&
                     font == FontManager.instance.potentialItemTipsDynamicBaseFont &&
                     __instance.Backend is SGUIIMBackend backend)
                 {
@@ -756,9 +766,9 @@ namespace AutoTranslate
             [HarmonyPostfix]
             public static void GetLineHeightPostfix(SGUIIMBackend __instance, ref float __result)
             {
-                if (__instance.Skin.font != null && __instance.Skin.font == FontManager.instance.potentialItemTipsDynamicBaseFont)
+                if (__instance.Skin.font != null && __instance.Skin.font == FontManager.instance?.potentialItemTipsDynamicBaseFont)
                     __result = __instance.Skin.font.fontSize * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
-                else if (__instance.Skin.font != null && __instance.Skin.font == FontManager.instance.itemTipsModuleFont)
+                else if (__instance.Skin.font != null && __instance.Skin.font == FontManager.instance?.itemTipsModuleFont)
                     __result = 1.1f * FontManager.instance.originalLineHeight * config.ItemTipsFontScale * config.ItemTipsLineHeightScale;
             }
         }

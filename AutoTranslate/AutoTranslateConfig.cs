@@ -22,6 +22,9 @@ namespace AutoTranslate
         internal string CachedTranslations;
         internal bool AutoSaveCachedTranslationsUponQuit;
         internal bool LogRequestedTexts;
+        internal bool TranslateTextFromDfLabel;
+        internal bool TranslateTextFromDfButton;
+        internal bool TranslateTextFromTk2dTextMesh;
 
         internal AutoTranslateModule.OverrideFontType OverrideFont;
         internal string FontAssetBundleName;

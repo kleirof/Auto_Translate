@@ -5,13 +5,13 @@ namespace AutoTranslate
 {
     public static class TextObjectManager
     {
-        private static readonly Dictionary<int, TextObject> map = new Dictionary<int, TextObject>();
+        private static readonly Dictionary<int, TextObject> map = new Dictionary<int, TextObject>(128);
 
-        private static readonly Dictionary<int, List<int>> goToCompMap = new Dictionary<int, List<int>>();
+        private static readonly Dictionary<int, List<int>> goToCompMap = new Dictionary<int, List<int>>(128);
 
         public static TextObject GetNonUnityTextObject(object so)
         {
-            if (so == null) return null;
+            if (so == null || so.Equals(null)) return null;
             var result = Pools.textObjectPool.Get();
             result.Set(so);
             result.Retain();
@@ -20,7 +20,7 @@ namespace AutoTranslate
 
         public static TextObject GetUnityTextObject(UnityEngine.Object uo)
         {
-            if (uo == null) return null;
+            if (uo == null || uo.Equals(null)) return null;
             int id = uo.GetInstanceID();
             if (map.TryGetValue(id, out var existed))
             {
@@ -43,7 +43,7 @@ namespace AutoTranslate
 
         public static void Register(TextObject to)
         {
-            if (!(to.Target is UnityEngine.Object uo)) return;
+            if (!(to.Target is UnityEngine.Object uo) || uo == null || uo.Equals(null)) return;
 
             int id = uo.GetInstanceID();
             if (!map.ContainsKey(id))
@@ -66,7 +66,7 @@ namespace AutoTranslate
 
         public static void MarkDead(UnityEngine.Object uo)
         {
-            if (uo == null) return;
+            if (uo == null || uo.Equals(null)) return;
 
             if (uo is Component comp)
             {
@@ -138,7 +138,7 @@ namespace AutoTranslate
 
         public static void MarkIfTarget(object obj)
         {
-            if (obj == null || !TextObject.ObjectIsTargetType(obj)) return;
+            if (obj == null || obj.Equals(null)) return;
 
             if (obj is UnityEngine.Object uo)
                 MarkDead(uo);
