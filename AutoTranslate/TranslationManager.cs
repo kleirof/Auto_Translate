@@ -17,7 +17,8 @@ namespace AutoTranslate
         private bool translateOn;
 
         private LRUCache<string, string> translationCache;
-        private LRUCache<string, int> fullTextCache;
+        private LRUCache<string, string> fullTextTranslationCache;
+        private LRUCache<string, int> fullTextCountCache;
         private bool isProcessingQueue = false;
         private Queue<TranslationQueueElement> translationQueue;
 
@@ -84,8 +85,9 @@ namespace AutoTranslate
                     break;
             }
 
-            fullTextCache = new LRUCache<string, int>(64, 64);
+            fullTextCountCache = new LRUCache<string, int>(64, 64);
             translationCache = new LRUCache<string, string>(config.TranslationCacheCapacity, Math.Min(config.TranslationCacheCapacity, 1024));
+            fullTextTranslationCache = new LRUCache<string, string>(64, 64);
             translationQueue = new Queue<TranslationQueueElement>(1024);
 
             if (!string.IsNullOrEmpty(config.PresetTranslations))
@@ -583,7 +585,7 @@ namespace AutoTranslate
                         {
                             OnTranslationFinishTextObject(control, text, translatedText, true);
                             RemoveTextFromControlTextMap(control, text);
-                            TextObjectManager.SafeRelease(control);
+                            TextObject.SafeRelease(control);
                         }
                         Pools.listTextObjectPool.Return(controls);
                         textControlMap.Remove(text);
@@ -661,7 +663,7 @@ namespace AutoTranslate
                                     foreach (var control in controls)
                                     {
                                         RemoveTextFromControlTextMap(control, originalText);
-                                        TextObjectManager.SafeRelease(control);
+                                        TextObject.SafeRelease(control);
                                     }
                                     Pools.listTextObjectPool.Return(controls);
                                     textControlMap.Remove(originalText);
@@ -706,7 +708,7 @@ namespace AutoTranslate
                                 {
                                     OnTranslationFinishTextObject(control, originalText, translatedText, true);
                                     RemoveTextFromControlTextMap(control, originalText);
-                                    TextObjectManager.SafeRelease(control);
+                                    TextObject.SafeRelease(control);
                                 }
                                 Pools.listTextObjectPool.Return(controls);
                                 textControlMap.Remove(originalText);
@@ -742,7 +744,13 @@ namespace AutoTranslate
                 return;
             }
 
-            TextObject textObject = TextObjectManager.GetTextObject(control);
+            if (fullTextTranslationCache.TryGetValue(text, out string translatedFullText))
+            {
+                OnTranslationFinish(control, text, translatedFullText, false);
+                return;
+            }
+
+            TextObject textObject = TextObject.GetTextObject(control);
 
             cachedString = text;
             cachedObject = textObject;
@@ -810,10 +818,10 @@ namespace AutoTranslate
         {
             AddTextToControlTextMap(textObject, text);
             translationQueue.Enqueue(new TranslationQueueElement(text, textObject));
-            if (fullTextCache.TryGetValue(text, out int count))
-                fullTextCache.Set(text, count + 1);
+            if (fullTextCountCache.TryGetValue(text, out int count))
+                fullTextCountCache.Set(text, count + 1);
             else
-                fullTextCache.Set(text, 1);
+                fullTextCountCache.Set(text, 1);
         }
 
         private string RemovePrefixFromText(string text, TextObject textObject)
@@ -896,8 +904,8 @@ namespace AutoTranslate
             if (control == null || result == null)
                 return;
 
-            if (setFullTextCached && fullTextCache.TryGetValue(original, out int count) && count > 2)
-                translationCache.Set(original, result);
+            if (setFullTextCached && fullTextCountCache.TryGetValue(original, out int count) && count > 2)
+                fullTextTranslationCache.Set(original, result);
 
             resultBuilder.Length = 0;
             if (control is dfLabel dfLabel)
@@ -913,7 +921,7 @@ namespace AutoTranslate
                     float originalHeight = dfLabel.Height;
 
                     dfFontBase fontBase = FontManager.instance?.dfFontBase;
-                    if (fontBase != null && dfLabel.Font != fontBase)
+                    if (fontBase != null && dfLabel.font != fontBase)
                     {
                         dfLabel.Font = fontBase;
                         if (fontBase is dfFont dfFont)
@@ -946,7 +954,7 @@ namespace AutoTranslate
                 if (startIndex != -1)
                 {
                     dfFontBase fontBase = FontManager.instance?.dfFontBase;
-                    if (fontBase != null && dfButton.Font != fontBase)
+                    if (fontBase != null && dfButton.font != fontBase)
                     {
                         dfButton.Font = fontBase;
                         if (fontBase is dfFont dfFont)

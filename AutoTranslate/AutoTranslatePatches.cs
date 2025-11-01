@@ -125,7 +125,7 @@ namespace AutoTranslate
                 return;
 
             dfFontBase fontBase = FontManager.instance?.dfFontBase;
-            if (fontBase != null && instance.Font != fontBase)
+            if (fontBase != null && instance.font != fontBase)
             {
                 instance.Font = fontBase;
                 if (fontBase is dfFont dfFont)
@@ -141,19 +141,6 @@ namespace AutoTranslate
 
         private static void DfButtonTextAddCall(dfButton instance)
         {
-            if (instance == null || instance.Equals(null))
-                return;
-
-            dfFontBase fontBase = FontManager.instance?.dfFontBase;
-            if (fontBase != null && instance.Font != fontBase)
-            {
-                instance.Font = fontBase;
-                if (fontBase is dfFont dfFont)
-                    instance.Atlas = dfFont.Atlas;
-
-                if (config.DfTextScaleExpandThreshold >= 0 && instance.TextScale < config.DfTextScaleExpandThreshold)
-                    instance.TextScale = config.DfTextScaleExpandToValue;
-            }
             string added = AddMissingBracket(instance.text);
 
             if (!added.Equals(instance.text))
@@ -730,7 +717,7 @@ namespace AutoTranslate
             private static int MeasureTextPatchCall_1(int orig, Font font2)
             {
                 if (FontManager.instance?.potentialItemTipsDynamicBaseFont != null &&
-                    font2 == FontManager.instance.potentialItemTipsDynamicBaseFont)
+                    font2 == FontManager.instance?.potentialItemTipsDynamicBaseFont)
                     return Mathf.RoundToInt(font2.fontSize * config.ItemTipsFontScale);
                 return orig;
             }
@@ -738,7 +725,7 @@ namespace AutoTranslate
             private static bool MeasureTextPatchCall_2(bool orig, Font font2, char c, out CharacterInfo characterInfo2)
             {
                 if (FontManager.instance?.potentialItemTipsDynamicBaseFont != null &&
-                    font2 == FontManager.instance.potentialItemTipsDynamicBaseFont)
+                    font2 == FontManager.instance?.potentialItemTipsDynamicBaseFont)
                     return font2.GetCharacterInfo(c, out characterInfo2, Mathf.RoundToInt(font2.fontSize * config.ItemTipsFontScale));
                 return font2.GetCharacterInfo(c, out characterInfo2);
             }
@@ -752,7 +739,7 @@ namespace AutoTranslate
             {
                 if (__instance.Font is Font font &&
                     FontManager.instance?.potentialItemTipsDynamicBaseFont != null &&
-                    font == FontManager.instance.potentialItemTipsDynamicBaseFont &&
+                    font == FontManager.instance?.potentialItemTipsDynamicBaseFont &&
                     __instance.Backend is SGUIIMBackend backend)
                 {
                     backend.Skin.label.fontSize = Mathf.RoundToInt(font.fontSize * config.ItemTipsFontScale);
@@ -806,7 +793,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             static void DestroyPrefix(System.Object obj, float t)
             {
-                TextObjectManager.MarkIfTarget(obj);
+                TextObject.MarkIfTarget(obj);
             }
         }
 
@@ -816,7 +803,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             static void DestroyImmediatePrefix(System.Object obj, bool allowDestroyingAssets)
             {
-                TextObjectManager.MarkIfTarget(obj);
+                TextObject.MarkIfTarget(obj);
             }
         }
 
@@ -826,7 +813,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             static void DestroyObjectPrefix(System.Object obj, float t)
             {
-                TextObjectManager.MarkIfTarget(obj);
+                TextObject.MarkIfTarget(obj);
             }
         }
     }

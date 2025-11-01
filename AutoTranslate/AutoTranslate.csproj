@@ -256,7 +256,6 @@
     <Compile Include="ReusableTextReader.cs" />
     <Compile Include="StatusLabel.cs" />
     <Compile Include="TextObject.cs" />
-    <Compile Include="TextObjectManager.cs" />
     <Compile Include="TextProcessor.cs" />
     <Compile Include="TencentTranslationService.cs" />
     <Compile Include="FontManager.cs" />
