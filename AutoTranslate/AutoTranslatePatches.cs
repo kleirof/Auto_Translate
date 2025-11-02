@@ -141,6 +141,20 @@ namespace AutoTranslate
 
         private static void DfButtonTextAddCall(dfButton instance)
         {
+            if (instance == null || instance.Equals(null))
+                return;
+
+            dfFontBase fontBase = FontManager.instance?.dfFontBase;
+            if (fontBase != null && instance.font != fontBase)
+            {
+                instance.Font = fontBase;
+                if (fontBase is dfFont dfFont)
+                    instance.Atlas = dfFont.Atlas;
+
+                if (config.DfTextScaleExpandThreshold >= 0 && instance.TextScale < config.DfTextScaleExpandThreshold)
+                    instance.TextScale = config.DfTextScaleExpandToValue;
+            }
+
             string added = AddMissingBracket(instance.text);
 
             if (!added.Equals(instance.text))
