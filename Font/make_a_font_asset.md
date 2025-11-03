@@ -66,16 +66,16 @@ BMFont 是由 AngelCode 提供的免费工具，可以将 ttf 或 otf 字体文�
 
 <img src="https://imgbb.io/ib/IjPaYm0pHf5yiSw_1738227198.png"  />
 
-### **步骤 3：生成 dfFont 或 dfDynamicFont（推荐后者）**
+### **步骤 3：生成 dfFont 或 dfDynamicFont（选其一即可）**
 
-1. （不推荐）生成 dfFont：
-   1. ~~则右键 png 文件，**Daikon Forge > Texture Atlas > Create New Atlas**。<img src="https://imgbb.io/ib/rO1zZnHMdKx5ZC8_1738227479.png"  />~~
-   2. ~~在生成的 atlas 的 Inspector 中将 **Max Size**不要小于图像尺寸，**Padding**设置为0。<img src="https://imgbb.io/ib/oSNSCl5LIreU18B_1738227337.png"  />~~
-   3. ~~右键 fnt 文件，**Daikon Forge > Fonts > Create Bitmapped Font**。<img src="https://imgbb.io/ib/TnZggTaboetPSCk_1738227599.png"  />~~
-   4. ~~在生成的 dfFont 的 Inspector 中将 **Atlas** 和 **Font Sprite** 设置为刚才生成的东西。<img src="https://imgbb.io/ib/jEQfcHyrKzXd1lx_1738227683.png"  />~~
-2. （**推荐**）生成 dfDynamicFont：
-   1. 则右键 ttf 或 otf 文件，**Daikon Forge > Font > Create Dynamic Font**。<img src="https://imgbb.io/ib/qI3iJ7YsKEohGMN_1738227761.png"  />
-   2. 在生成的 dfDynamicFont 的 Inspector 中设置合适的字号。<img src="https://imgbb.io/ib/YrqOh6KZk0QwLmW_1738227803.png"  />
+1. 生成 dfFont：
+   1. 则右键 png 文件，**Daikon Forge > Texture Atlas > Create New Atlas**。<img src="https://imgbb.io/ib/rO1zZnHMdKx5ZC8_1738227479.png"  />
+   2. 在生成的 atlas 的 Inspector 中将 **Max Size**不要小于图像尺寸，**Padding**设置为0。<img src="https://imgbb.io/ib/oSNSCl5LIreU18B_1738227337.png"  />
+   3. 右键 fnt 文件，**Daikon Forge > Fonts > Create Bitmapped Font**。<img src="https://imgbb.io/ib/TnZggTaboetPSCk_1738227599.png"  />
+   4. 在生成的 dfFont 的 Inspector 中将 **Atlas** 和 **Font Sprite** 设置为刚才生成的东西。<img src="https://imgbb.io/ib/jEQfcHyrKzXd1lx_1738227683.png"  />
+2. ~~（弃用）生成 dfDynamicFont：~~
+   1. ~~则右键 ttf 或 otf 文件，**Daikon Forge > Font > Create Dynamic Font**。<img src="https://imgbb.io/ib/qI3iJ7YsKEohGMN_1738227761.png"  />~~
+   2. ~~在生成的 dfDynamicFont 的 Inspector 中设置合适的字号。<img src="https://imgbb.io/ib/YrqOh6KZk0QwLmW_1738227803.png"  />~~
 
 ### **步骤 4：生成 tk2dFont**
 
@@ -162,15 +162,15 @@ Follow the tutorial in the EtG Modding Guide [Assetbundles: How-To](https://mtgm
 
 <img src="https://imgbb.io/ib/IjPaYm0pHf5yiSw_1738227198.png"  />
 
-### **Step 3: Generate dfFont or dfDynamicFont (Recommended: dfDynamicFont)**
-1. (Not Recommended) Generate dfFont:
-   1. ~~Right-click the PNG file and choose **Daikon Forge > Texture Atlas > Create New Atlas**.<img src="https://imgbb.io/ib/rO1zZnHMdKx5ZC8_1738227479.png"  />~~
-   2. ~~In the generated atlas's **Inspector**, set **Max Size** to match the image size, and set **Padding** to 0.<img src="https://imgbb.io/ib/oSNSCl5LIreU18B_1738227337.png"  />~~
-   3. ~~Right-click the FNT file and choose **Daikon Forge > Fonts > Create Bitmapped Font**.<img src="https://imgbb.io/ib/TnZggTaboetPSCk_1738227599.png"  />~~
-   4. ~~In the generated dfFont's **Inspector**, set the **Atlas** and **Font Sprite** to the previously created assets.<img src="https://imgbb.io/ib/jEQfcHyrKzXd1lx_1738227683.png"  />~~
-2. (Recommended) Generate dfDynamicFont:
-   1. Right-click the TTF or OTF file and choose **Daikon Forge > Font > Create Dynamic Font**.<img src="https://imgbb.io/ib/qI3iJ7YsKEohGMN_1738227761.png"  />
-   2. In the generated dfDynamicFont's **Inspector**, set the appropriate font size.<img src="https://imgbb.io/ib/YrqOh6KZk0QwLmW_1738227803.png"  />
+### **Step 3: Generate dfFont or dfDynamicFont (Choose One)**
+1. Generate dfFont:
+   1. Right-click the PNG file and choose **Daikon Forge > Texture Atlas > Create New Atlas**.<img src="https://imgbb.io/ib/rO1zZnHMdKx5ZC8_1738227479.png"  />
+   2. In the generated atlas's **Inspector**, set **Max Size** to match the image size, and set **Padding** to 0.<img src="https://imgbb.io/ib/oSNSCl5LIreU18B_1738227337.png"  />
+   3. Right-click the FNT file and choose **Daikon Forge > Fonts > Create Bitmapped Font**.<img src="https://imgbb.io/ib/TnZggTaboetPSCk_1738227599.png"  />
+   4. In the generated dfFont's **Inspector**, set the **Atlas** and **Font Sprite** to the previously created assets.<img src="https://imgbb.io/ib/jEQfcHyrKzXd1lx_1738227683.png"  />
+2. ~~(Deprecated) Generate dfDynamicFont:~~
+   1. ~~Right-click the TTF or OTF file and choose **Daikon Forge > Font > Create Dynamic Font**.<img src="https://imgbb.io/ib/qI3iJ7YsKEohGMN_1738227761.png"  />~~
+   2. ~~In the generated dfDynamicFont's **Inspector**, set the appropriate font size.<img src="https://imgbb.io/ib/YrqOh6KZk0QwLmW_1738227803.png"  />~~
 
 ### **Step 4: Generate tk2dFont**
 1. Generate a tk2dFont by selecting the FNT file and the corresponding PNG file. Right-click and choose **Create > tk2d > Font**. Modify the name of the generated file.<img src="https://imgbb.io/ib/F5DXS61eWEySam2_1738227917.png"  />

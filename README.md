@@ -32,7 +32,7 @@
 4. 在 **General 选项卡**中选择使用的**翻译服务 api**。
 5. 在 **General 选项卡**中，设置 **RegexForFullTextNeedToTranslate**、**RegexForEachLineNeedToTranslate** 和 **RegexForIgnoredSubstringWithinText**。默认为中文设置，如果目标语言是中文不用修改。其他语言自行修改。
 6. 在 **General 选项卡**中，如果你的目标语言**不是中文**，把 **PresetTranslations** 置为空，或者用你自定义的 PresetTranslations.json。
-7. 在 **Font 选项卡**中 **OverrideFont** 选择需要覆盖的字体。若目标语言是为中文，设为 Chinese 或 **Custom（推荐）**。其他语言自行设置。
+7. 在 **Font 选项卡**中 **OverridedFont** 选择需要覆盖的字体。若目标语言是为中文，设为 Chinese。其他语言自行设置。
 8. 进入选择的 **api 选项卡**，输入该 api **需要的密钥和其他细节如源语言、目标语言等**。翻译 api 需要的必选项和可选项请查阅服务商官方说明。
 9. 启动游戏。
 
@@ -44,7 +44,7 @@
 4. In **the General tab**, select **the translation service API** you want to use.
 5. In **the General tab**, Set **RegexForFullTextNeedToTranslation**, **RegexForEachLineNedToTranslate** and **RegexForIgnoreDubstringWithinText**. The default setting is for Chinese. If the target language is Chinese, there is no need to modify it. For other languages, please set on your own.
 6. In **the General tab**, If your target language is **not Chinese**, set **PresetTranslations** to empty or use your custom PresetTranslations.json.
-7. In **the Font tab**, Select the font you want to override in the **OverrideFont** below. If the target language is Chinese, set it as Chinese or **Custom (recommended)**. For other languages, please modify on your own.
+7. In **the Font tab**, Select the font you want to override in the **OverridedFont** below. If the target language is Chinese, set it as Chinese. For other languages, please modify on your own.
 8. Go to **the tab for the selected API**, and enter **the required key and other details like source language, target language, etc**. For required and optional parameters for the translation API, please refer to the official documentation of the API provider.
 9. Launch the game.
 
@@ -119,25 +119,34 @@ Setting **RegexForFullTextNeedToTranslate**, **RegexForEachLineNeedToTranslate**
 17. **LogRequestedTexts**  
    是否在日志中显示请求翻译的文本。
 
+18. **TranslateTextFromDfLabel**  
+    翻译 DfLabel 中的文本。
+
+19. **TranslateTextFromDfButton**  
+    翻译 DfButton 中的文本。
+
+20. **TranslateTextFromTk2dTextMesh**  
+    翻译 Tk2dTextMesh 中的文本。
+
 ### 字体 Font
 
-1. **OverrideFont**  
+1. **OverridedFont**  
    用来覆盖游戏字体的字体。根据你需要的目标语言选择。
 
 2. **FontAssetBundleName**  
    包含自定义字体的 AssetBundle 名称。位于 dll 同目录下。
 
-3. **CustomDfFontName**  
-   要使用的自定义 df 字体。请把它包含于 FontAssetBundle。
+3. **CustomizedDfFontName**  
+   要使用的自定义 df 字体。请把它包含于 FontAssetBundle。提醒：使用dfDynamicFont会造成游戏崩溃，请使用dfFont代替。
 
-4. **CustomTk2dFontName**  
+4. **CustomizedTk2dFontName**  
    要使用的自定义 tk2d 字体。请把它包含于 FontAssetBundle。
 
 5. **OverrideDfTokenizer**  
-   覆盖的Df分词器。Token可以用于处理文本的自动换行位置。如每个字换行还是单词后换行。
+   覆盖的 Df 分词器。Token 可以用于处理文本的自动换行位置。如每个字换行还是单词后换行。
 
 6. **RegexForDfTokenizer**  
-   用于 Df 生成 token 的正则表达式。换行只能出现在它的后方。只在 OverrideDfTokenizer为CustomRegex 时生效。样例 RegexForDfTokenizer 正则表达式： `[a-zA-Z0-9]+|.`
+   用于 Df 生成 token 的正则表达式。换行只能出现在它的后方。只在 OverrideDfTokenizer 为 CustomRegex 时生效。样例 RegexForDfTokenizer 正则表达式： `[a-zA-Z0-9]+|.`
 
 7. **DfTextScaleExpandThreshold**  
    低于这个值的 Df TextScale 会被扩大。为负表示不生效。
@@ -252,19 +261,28 @@ Load the translation cache from \[cache_json_name\], which defaults to CachedTra
 17. **LogRequestedTexts**  
    Whether to log the text requested for translation.
 
+18. **TranslateTextFromDfLabel**  
+    Translate the text in DfLabel.
+
+19. **TranslateTextFromDfButton**  
+    Translate the text in DfButton.
+
+20. **TranslateTextFromTk2dTextMesh**  
+    Translate the text in Tk2dTextMesh.
+
 ### Font
 
-1. **OverrideFont**  
+1. **OverridedFont**  
    Font used to override the font of the game. Choose according to the target language you need.
 
 2. **FontAssetBundleName**   
-   The name of the AssetBundle containing custom fonts. Located in the same directory as the DLL.
+   The name of the AssetBundle containing customized fonts. Located in the same directory as the DLL.
 
-3. **CustomDfFontName**  
-   The name of the custom DF font to use. Include it within the FontAssetBundle.
+3. **CustomizedDfFontName**  
+   The name of the customized DF font to use. Include it within the FontAssetBundle. Reminder: Using dfDynamicFont may cause the game to crash, please use dfFont instead.
 
-4. **CustomTk2dFontName**  
-   The name of the custom tk2d font to use. Include it within the FontAssetBundle.
+4. **CustomizedTk2dFontName**  
+   The name of the customized tk2d font to use. Include it within the FontAssetBundle.
 
 5. **OverrideDfTokenizer**  
    Override Df tokenizer. Token is used to handle the automatic line break position of text. Whether to wrap each word or to wrap after each word.
