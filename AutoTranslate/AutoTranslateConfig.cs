@@ -26,10 +26,10 @@ namespace AutoTranslate
         internal bool TranslateTextFromDfButton;
         internal bool TranslateTextFromTk2dTextMesh;
 
-        internal AutoTranslateModule.OverrideFontType OverrideFont;
+        internal AutoTranslateModule.OverridedFontType OverridedFont;
         internal string FontAssetBundleName;
-        internal string CustomDfFontName;
-        internal string CustomTk2dFontName;
+        internal string CustomizedDfFontName;
+        internal string CustomizedTk2dFontName;
         internal AutoTranslateModule.OverrideDfTokenizerType OverrideDfTokenizer;
         internal string RegexForDfTokenizer;
         internal float DfTextScaleExpandThreshold;

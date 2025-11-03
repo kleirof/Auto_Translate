@@ -6,7 +6,6 @@ using System.Reflection;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using SGUI;
 using System.Text;
 
@@ -659,7 +658,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             public static bool UpdateForLanguagePrefix()
             {
-                if (FontManager.instance.overrideFont == AutoTranslateModule.OverrideFontType.Custom && FontManager.instance.dfFontBase != null)
+                if (FontManager.instance.overridedFont == AutoTranslateModule.OverridedFontType.Customized && FontManager.instance.dfFontBase != null)
                     return false;
                 return true;
             }
@@ -780,54 +779,50 @@ namespace AutoTranslate
             [HarmonyPostfix]
             public static void FoyerPreloaderAwakePostfix(FoyerPreloader __instance)
             {
-                Transform loadingTransform = __instance.transform?.Find("weird name thing");
-                if (loadingTransform == null) 
-                    return;
-                DFScaleFixer component = loadingTransform.GetComponent<DFScaleFixer>();
-                if (component != null)
-                    UnityEngine.Object.Destroy(component);
-                dfGUIManager guiManager = loadingTransform.GetComponent<dfGUIManager>();
-                if (guiManager == null)
-                    return;
-                guiManager.UIScale = 1;
-                guiManager.PixelPerfectMode = true;
-
-                for (int i = 0; i < loadingTransform.childCount; i++)
+                try
                 {
-                    Transform child = loadingTransform.GetChild(i);
-                    if (child.GetComponent<dfLabel>() == null)
-                        child.localScale *= 5;
-                }
+                    Transform loadingTransform = __instance.transform?.Find("weird name thing");
+                    if (loadingTransform == null)
+                        return;
+                    DFScaleFixer component = loadingTransform.GetComponent<DFScaleFixer>();
+                    if (component != null)
+                        UnityEngine.Object.Destroy(component);
+                    dfGUIManager guiManager = loadingTransform.GetComponent<dfGUIManager>();
+                    if (guiManager == null)
+                        return;
+                    guiManager.UIScale = 1;
+                    guiManager.PixelPerfectMode = true;
+
+                    for (int i = 0; i < loadingTransform.childCount; i++)
+                    {
+                        Transform child = loadingTransform.GetChild(i);
+                        if (child.GetComponent<dfLabel>() == null)
+                            child.localScale *= 5;
+                    }
+                } catch { }
             }
         }
 
-        [HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.Destroy), new System.Type[] { typeof(UnityEngine.Object), typeof(float) })]
-        public class ObjectDestroyPatchClass
+        [HarmonyPatch(typeof(GameManager), nameof(GameManager.LoadNextLevel))]
+        public class LoadNextLevelPatchClass
         {
             [HarmonyPrefix]
-            static void DestroyPrefix(System.Object obj, float t)
+            public static void LoadNextLevelPrefix()
             {
-                TextObject.MarkIfTarget(obj);
+                FontManager.instance.CopyAtlasItems();
             }
         }
 
-        [HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.DestroyImmediate), new System.Type[] { typeof(UnityEngine.Object), typeof(bool) })]
-        public class ObjectDestroyImmediatePatchClass
+        [HarmonyPatch(typeof(GameUIRoot), nameof(GameUIRoot.RegisterDefaultLabel))]
+        public class RegisterDefaultLabelPatchClass
         {
-            [HarmonyPrefix]
-            static void DestroyImmediatePrefix(System.Object obj, bool allowDestroyingAssets)
+            [HarmonyPostfix]
+            public static void RegisterDefaultLabelPostfix(GameObject __result)
             {
-                TextObject.MarkIfTarget(obj);
-            }
-        }
-
-        [HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.DestroyObject), new System.Type[] { typeof(UnityEngine.Object), typeof(float) })]
-        public class ObjectDestroyObjectPatchClass
-        {
-            [HarmonyPrefix]
-            static void DestroyObjectPrefix(System.Object obj, float t)
-            {
-                TextObject.MarkIfTarget(obj);
+                DefaultLabelController controller = __result.GetComponent<DefaultLabelController>();
+                if (controller == null || controller.label == null)
+                    return;
+                controller.label.AutoSize = true;
             }
         }
     }

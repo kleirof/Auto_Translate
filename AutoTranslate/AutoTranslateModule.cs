@@ -10,12 +10,13 @@ using System.IO;
 namespace AutoTranslate
 {
     [BepInDependency("etgmodding.etg.mtgapi")]
+    [BepInDependency("alexandria.etgmod.alexandria")]
     [BepInPlugin(GUID, NAME, VERSION)]
     public class AutoTranslateModule : BaseUnityPlugin
     {
         public const string GUID = "kleirof.etg.autotranslate";
         public const string NAME = "Auto Translate";
-        public const string VERSION = "1.2.2";
+        public const string VERSION = "1.2.4";
         public const string TEXT_COLOR = "#AA3399";
 
         internal static AutoTranslateModule instance;
@@ -42,10 +43,10 @@ namespace AutoTranslate
         private ConfigEntry<bool> TranslateTextFromDfButton;
         private ConfigEntry<bool> TranslateTextFromTk2dTextMesh;
 
-        private ConfigEntry<OverrideFontType> OverrideFont;
+        private ConfigEntry<OverridedFontType> OverridedFont;
         private ConfigEntry<string> FontAssetBundleName;
-        private ConfigEntry<string> CustomDfFontName;
-        private ConfigEntry<string> CustomTk2dFontName;
+        private ConfigEntry<string> CustomizedDfFontName;
+        private ConfigEntry<string> CustomizedTk2dFontName;
         private ConfigEntry<string> RegexForDfTokenizer;
         private ConfigEntry<OverrideDfTokenizerType> OverrideDfTokenizer;
         private ConfigEntry<float> DfTextScaleExpandThreshold;
@@ -164,7 +165,7 @@ namespace AutoTranslate
                 Log($"{NAME} v{VERSION} started successfully.", TEXT_COLOR);
             Log($"   Translate Api: {config.TranslationAPI}", TEXT_COLOR);
 
-            fontManager?.InitializeFontAfterGameManager(OverrideFont.Value);
+            fontManager?.InitializeFontAfterGameManager(OverridedFont.Value);
             statusLabel?.InitializeStatusLabel();
 
             ETGModConsole.Commands.AddGroup("autotranslate", LogHelp);
@@ -322,32 +323,32 @@ namespace AutoTranslate
                 "翻译Tk2dTextMesh中的文本。Translate the text in Tk2dTextMesh."
                 );
 
-            OverrideFont = Config.Bind(
+            OverridedFont = Config.Bind(
                 "2.Font",
-                "OverrideFont",
-                OverrideFontType.Custom,
+                "OverridedFont",
+                OverridedFontType.Chinese,
                 "用来覆盖游戏字体的字体。根据你需要的目标语言选择。Font used to override the font of the game. Choose according to the target language you need."
                 );
 
             FontAssetBundleName = Config.Bind(
                 "2.Font",
                 "FontAssetBundleName",
-                "fusion_pixel_12px_zh_cn",
-                "包含自定义字体的AssetBundle名称。位于dll同目录下。AssetBundle name containing custom fonts. Located in the same directory as DLL."
+                "",
+                "包含自定义字体的AssetBundle名称。位于dll同目录下。AssetBundle name containing customized fonts. Located in the same directory as DLL."
                 );
 
-            CustomDfFontName = Config.Bind(
+            CustomizedDfFontName = Config.Bind(
                 "2.Font",
-                "CustomDfFontName",
-                "Fusion_Pixel_12px_Monospaced_dfDynamic",
-                "要使用的自定义df字体。请把它包含于FontAssetBundle。The custom df font to be used. Please include it in FontAssetBundle."
+                "CustomizedDfFontName",
+                "",
+                "要使用的自定义df字体。请把它包含于FontAssetBundle。The customized df font to be used. Please include it in FontAssetBundle."
                 );
 
-            CustomTk2dFontName = Config.Bind(
+            CustomizedTk2dFontName = Config.Bind(
                 "2.Font",
-                "CustomTk2dFontName",
-                "Fusion_Pixel_12px_Monospaced_tk2d",
-                "要使用的自定义tk2d字体。请把它包含于FontAssetBundle。The custom tk2d font to be used. Please include it in FontAssetBundle."
+                "CustomizedTk2dFontName",
+                "",
+                "要使用的自定义tk2d字体。请把它包含于FontAssetBundle。The customized tk2d font to be used. Please include it in FontAssetBundle."
                 );
 
             OverrideDfTokenizer = Config.Bind(
@@ -695,10 +696,10 @@ namespace AutoTranslate
                 TranslateTextFromDfButton = TranslateTextFromDfButton.Value,
                 TranslateTextFromTk2dTextMesh = TranslateTextFromTk2dTextMesh.Value,
 
-                OverrideFont = OverrideFont.Value,
+                OverridedFont = OverridedFont.Value,
                 FontAssetBundleName = FontAssetBundleName.Value,
-                CustomDfFontName = CustomDfFontName.Value,
-                CustomTk2dFontName = CustomTk2dFontName.Value,
+                CustomizedDfFontName = CustomizedDfFontName.Value,
+                CustomizedTk2dFontName = CustomizedTk2dFontName.Value,
                 OverrideDfTokenizer = OverrideDfTokenizer.Value,
                 RegexForDfTokenizer = RegexForDfTokenizer.Value,
                 DfTextScaleExpandThreshold = DfTextScaleExpandThreshold.Value,
@@ -890,7 +891,7 @@ namespace AutoTranslate
             Llm,
         }
 
-        public enum OverrideFontType
+        public enum OverridedFontType
         {
             None,
             Chinese,
@@ -899,7 +900,7 @@ namespace AutoTranslate
             Korean,
             Russian,
             Polish,
-            Custom,
+            Customized,
         }
 
         public enum OverrideDfTokenizerType

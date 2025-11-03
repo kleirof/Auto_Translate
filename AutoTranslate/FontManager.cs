@@ -1,4 +1,5 @@
-﻿using SGUI;
+﻿using Alexandria.CharacterAPI;
+using SGUI;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -17,7 +18,7 @@ namespace AutoTranslate
         public AssetBundle assetBundle;
         public dfFontBase dfFontBase;
         public tk2dFontData tk2dFont;
-        public AutoTranslateModule.OverrideFontType overrideFont;
+        public AutoTranslateModule.OverridedFontType overridedFont;
 
         public static string defaultRegexForTokenizer = @"[a-zA-Z0-9]+|.";
         public static string defaultRegexForItemTipsModTokenizer = @"(?:<color=[^>]+?>|</color>|[a-zA-Z0-9]+|\s+|.)";
@@ -47,6 +48,8 @@ namespace AutoTranslate
         internal int originalLineHeight;
         private StringBuilder tokenBuilder = new StringBuilder(1024);
 
+        private bool atlasCopied = false;
+
         public FontManager()
         {
             instance = this;
@@ -73,27 +76,27 @@ namespace AutoTranslate
                 itemTipsPivot = itemTipsDefaultPivot;
             }
 
-            overrideFont = config.OverrideFont;
-            if (overrideFont != AutoTranslateModule.OverrideFontType.Custom)
+            overridedFont = config.OverridedFont;
+            if (overridedFont != AutoTranslateModule.OverridedFontType.Customized)
             {
-                if (overrideFont == AutoTranslateModule.OverrideFontType.None || overrideFont == AutoTranslateModule.OverrideFontType.English || overrideFont == AutoTranslateModule.OverrideFontType.Polish)
+                if (overridedFont == AutoTranslateModule.OverridedFontType.None || overridedFont == AutoTranslateModule.OverridedFontType.English || overridedFont == AutoTranslateModule.OverridedFontType.Polish)
                     return;
-                else if (overrideFont == AutoTranslateModule.OverrideFontType.Chinese)
+                else if (overridedFont == AutoTranslateModule.OverridedFontType.Chinese)
                 {
                     dfFontBase = (ResourceCache.Acquire("Alternate Fonts/SimSun12_DF") as GameObject).GetComponent<dfFont>();
                     tk2dFont = (ResourceCache.Acquire("Alternate Fonts/SimSun12_TK2D") as GameObject).GetComponent<tk2dFont>().data;
                 }
-                else if (overrideFont == AutoTranslateModule.OverrideFontType.Japanese)
+                else if (overridedFont == AutoTranslateModule.OverridedFontType.Japanese)
                 {
                     dfFontBase = (ResourceCache.Acquire("Alternate Fonts/JackeyFont12_DF") as GameObject).GetComponent<dfFont>();
                     tk2dFont = (ResourceCache.Acquire("Alternate Fonts/JackeyFont_TK2D") as GameObject).GetComponent<tk2dFont>().data;
                 }
-                else if (overrideFont == AutoTranslateModule.OverrideFontType.Korean)
+                else if (overridedFont == AutoTranslateModule.OverridedFontType.Korean)
                 {
                     dfFontBase = (ResourceCache.Acquire("Alternate Fonts/NanumGothic16_DF") as GameObject).GetComponent<dfFont>();
                     tk2dFont = (ResourceCache.Acquire("Alternate Fonts/NanumGothic16TK2D") as GameObject).GetComponent<tk2dFont>().data;
                 }
-                else if (overrideFont == AutoTranslateModule.OverrideFontType.Russian)
+                else if (overridedFont == AutoTranslateModule.OverridedFontType.Russian)
                 {
                     dfFontBase = (ResourceCache.Acquire("Alternate Fonts/PixelaCYR_15_DF") as GameObject).GetComponent<dfFont>();
                     tk2dFont = (ResourceCache.Acquire("Alternate Fonts/PixelaCYR_15_TK2D") as GameObject).GetComponent<tk2dFont>().data;
@@ -101,17 +104,18 @@ namespace AutoTranslate
                 return;
             }
 
-            if (config.FontAssetBundleName == string.Empty || (config.CustomDfFontName == string.Empty && config.CustomTk2dFontName == string.Empty))
+            if (config.FontAssetBundleName == string.Empty || (config.CustomizedDfFontName == string.Empty && config.CustomizedTk2dFontName == string.Empty))
                 return;
 
             string assetBundlePath = Path.Combine(ETGMod.FolderPath(AutoTranslateModule.instance), config.FontAssetBundleName);
-            try
-            {
-                assetBundle = AssetBundleLoader.LoadAssetBundle(assetBundlePath);
-                dfFontBase = assetBundle.LoadAsset<GameObject>(config.CustomDfFontName).GetComponent<dfFontBase>();
-                tk2dFont = assetBundle.LoadAsset<GameObject>(config.CustomTk2dFontName).GetComponent<tk2dFont>().data;
-            }
-            catch { }
+
+            assetBundle = AssetBundleLoader.LoadAssetBundle(assetBundlePath);
+            GameObject dfFontObject = assetBundle.LoadAsset<GameObject>(config.CustomizedDfFontName);
+            UnityEngine.Object.DontDestroyOnLoad(dfFontObject);
+            dfFontBase = dfFontObject.GetComponent<dfFontBase>();
+            GameObject tk2dFontObject = assetBundle.LoadAsset<GameObject>(config.CustomizedTk2dFontName);
+            UnityEngine.Object.DontDestroyOnLoad(tk2dFontObject);
+            tk2dFont = tk2dFontObject.GetComponent<tk2dFont>().data;
         }
 
         private int EstimateTokenCount(string source)
@@ -345,9 +349,9 @@ namespace AutoTranslate
             return dfFont;
         }
 
-        internal void InitializeFontAfterGameManager(AutoTranslateModule.OverrideFontType fontType)
+        internal void InitializeFontAfterGameManager(AutoTranslateModule.OverridedFontType fontType)
         {
-            if (fontType == AutoTranslateModule.OverrideFontType.English || fontType == AutoTranslateModule.OverrideFontType.Polish)
+            if (fontType == AutoTranslateModule.OverridedFontType.English || fontType == AutoTranslateModule.OverridedFontType.Polish)
             {
                 dfFontBase = GameUIRoot.Instance.Manager.defaultFont as dfFont;
                 tk2dFont = GameManager.Instance.DefaultNormalConversationFont;
@@ -680,6 +684,92 @@ namespace AutoTranslate
             }
             font2.characterInfo = array;
             return font2;
+        }
+
+        private static void AddItemToAtlasManually(dfAtlas atlas, string name, Rect uvRect, Vector2 sizeInPixels)
+        {
+            dfAtlas.ItemInfo newItem = new dfAtlas.ItemInfo
+            {
+                name = name,
+                region = uvRect,
+                sizeInPixels = sizeInPixels,
+                texture = null,
+                textureGUID = name,
+                border = new RectOffset()
+            };
+
+            atlas.items.Add(newItem);
+            if (atlas.map == null)
+                atlas.map = new Dictionary<string, dfAtlas.ItemInfo>();
+            atlas.map[name] = newItem;
+        }
+
+        public void CopyAtlasItems()
+        {
+            if (atlasCopied)
+                return;
+
+            if (instance == null)
+                return;
+
+            dfAtlas targetAtlas;
+            if (overridedFont != AutoTranslateModule.OverridedFontType.None)
+            {
+                if (overridedFont == AutoTranslateModule.OverridedFontType.English || overridedFont == AutoTranslateModule.OverridedFontType.Polish)
+                    return;
+                targetAtlas = (dfFontBase as dfFont)?.Atlas;
+            }
+            else
+            {
+                StringTableManager.GungeonSupportedLanguages languages = GameManager.Options.CurrentLanguage;
+                if (languages == StringTableManager.GungeonSupportedLanguages.ENGLISH || languages == StringTableManager.GungeonSupportedLanguages.POLISH)
+                    return;
+                targetAtlas = GetGameFont()?.Atlas;
+            }
+
+            dfAtlas sourceAtlas = GameUIRoot.Instance.ConversationBar.portraitSprite.Atlas;
+
+            if (sourceAtlas == null || targetAtlas == null) return;
+
+            Texture2D originalTexture = targetAtlas.Texture;
+            Texture2D newTexture = new Texture2D(originalTexture.width, originalTexture.height, TextureFormat.RGBA32, false);
+
+            newTexture.filterMode = FilterMode.Point;
+            newTexture.wrapMode = TextureWrapMode.Clamp;
+
+            RenderTexture rt = RenderTexture.GetTemporary(originalTexture.width, originalTexture.height, 0);
+            Graphics.Blit(originalTexture, rt);
+            RenderTexture.active = rt;
+            newTexture.ReadPixels(new Rect(0, 0, originalTexture.width, originalTexture.height), 0, 0);
+            newTexture.Apply();
+            RenderTexture.active = null;
+            RenderTexture.ReleaseTemporary(rt);
+
+            targetAtlas.material.mainTexture = newTexture;
+
+            foreach (var item in sourceAtlas.Items)
+            {
+                if (targetAtlas[item.name] != null) continue;
+
+                int sourceX = Mathf.RoundToInt(item.region.x * sourceAtlas.Texture.width);
+                int sourceY = Mathf.RoundToInt(item.region.y * sourceAtlas.Texture.height);
+                int width = Mathf.RoundToInt(item.region.width * sourceAtlas.Texture.width);
+                int height = Mathf.RoundToInt(item.region.height * sourceAtlas.Texture.height);
+
+                Rect uvRect = targetAtlas.FindFirstValidEmptySpace(new IntVector2(width, height));
+                int targetX = Mathf.RoundToInt(uvRect.x * newTexture.width);
+                int targetY = Mathf.RoundToInt(uvRect.y * newTexture.height);
+
+                Color[] pixels = sourceAtlas.Texture.GetPixels(sourceX, sourceY, width, height);
+                newTexture.SetPixels(targetX, targetY, width, height, pixels);
+
+                AddItemToAtlasManually(targetAtlas, item.name, uvRect, new Vector2(width, height));
+            }
+
+            newTexture.Apply();
+
+            targetAtlas.material.mainTexture.filterMode = FilterMode.Point;
+            atlasCopied = true;
         }
     }
 }
