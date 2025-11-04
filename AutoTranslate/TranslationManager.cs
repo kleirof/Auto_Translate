@@ -925,7 +925,13 @@ namespace AutoTranslate
                     {
                         dfLabel.Font = fontBase;
                         if (fontBase is dfFont dfFont)
-                            dfLabel.Atlas = dfFont.Atlas;
+                        {
+                            if (dfLabel.Atlas != dfFont.Atlas)
+                            {
+                                FontManager.instance.CopyExtraAtlasItems(dfLabel.Atlas);
+                                dfLabel.Atlas = dfFont.Atlas;
+                            }
+                        }
 
                         if (config.DfTextScaleExpandThreshold >= 0 && dfLabel.TextScale < config.DfTextScaleExpandThreshold)
                             dfLabel.TextScale = config.DfTextScaleExpandToValue;

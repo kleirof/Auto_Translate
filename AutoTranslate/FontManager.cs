@@ -1,10 +1,13 @@
 ﻿using Alexandria.CharacterAPI;
+using BepInEx.Bootstrap;
+using HarmonyLib;
 using SGUI;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -48,7 +51,11 @@ namespace AutoTranslate
         internal int originalLineHeight;
         private StringBuilder tokenBuilder = new StringBuilder(1024);
 
-        private bool atlasCopied = false;
+        private HashSet<int> mergedAtlases = new HashSet<int>();
+
+        private bool initialAtlasCopied = false;
+
+        private HashSet<FieldInfo> extraAtlases = new HashSet<FieldInfo>();
 
         public FontManager()
         {
@@ -349,13 +356,15 @@ namespace AutoTranslate
             return dfFont;
         }
 
-        internal void InitializeFontAfterGameManager(AutoTranslateModule.OverridedFontType fontType)
+        internal void InitializeAfterGameManager(AutoTranslateModule.OverridedFontType fontType)
         {
             if (fontType == AutoTranslateModule.OverridedFontType.English || fontType == AutoTranslateModule.OverridedFontType.Polish)
             {
                 dfFontBase = GameUIRoot.Instance.Manager.defaultFont as dfFont;
                 tk2dFont = GameManager.Instance.DefaultNormalConversationFont;
             }
+
+            MarkExtraAtlas();
         }
 
         internal static void SetTextMeshFont(tk2dTextMesh textMesh, tk2dFontData font)
@@ -704,48 +713,60 @@ namespace AutoTranslate
             atlas.map[name] = newItem;
         }
 
-        public void CopyAtlasItems()
+        public bool CopyAtlasItems(dfAtlas sourceAtlas)
         {
-            if (atlasCopied)
-                return;
+            if (sourceAtlas == null) 
+                return false;
+
+            if (mergedAtlases.Contains(sourceAtlas.GetInstanceID()))
+                return false;
 
             if (instance == null)
-                return;
+                return false;
 
             dfAtlas targetAtlas;
             if (overridedFont != AutoTranslateModule.OverridedFontType.None)
             {
                 if (overridedFont == AutoTranslateModule.OverridedFontType.English || overridedFont == AutoTranslateModule.OverridedFontType.Polish)
-                    return;
+                    return false;
                 targetAtlas = (dfFontBase as dfFont)?.Atlas;
             }
             else
             {
                 StringTableManager.GungeonSupportedLanguages languages = GameManager.Options.CurrentLanguage;
                 if (languages == StringTableManager.GungeonSupportedLanguages.ENGLISH || languages == StringTableManager.GungeonSupportedLanguages.POLISH)
-                    return;
+                    return false;
                 targetAtlas = GetGameFont()?.Atlas;
             }
 
-            dfAtlas sourceAtlas = GameUIRoot.Instance.ConversationBar.portraitSprite.Atlas;
-
-            if (sourceAtlas == null || targetAtlas == null) return;
+            if (targetAtlas == null) 
+                return false;
 
             Texture2D originalTexture = targetAtlas.Texture;
-            Texture2D newTexture = new Texture2D(originalTexture.width, originalTexture.height, TextureFormat.RGBA32, false);
 
-            newTexture.filterMode = FilterMode.Point;
-            newTexture.wrapMode = TextureWrapMode.Clamp;
+            bool needNewTexture = !originalTexture.IsReadable();
+            Texture2D workingTexture;
 
-            RenderTexture rt = RenderTexture.GetTemporary(originalTexture.width, originalTexture.height, 0);
-            Graphics.Blit(originalTexture, rt);
-            RenderTexture.active = rt;
-            newTexture.ReadPixels(new Rect(0, 0, originalTexture.width, originalTexture.height), 0, 0);
-            newTexture.Apply();
-            RenderTexture.active = null;
-            RenderTexture.ReleaseTemporary(rt);
+            if (needNewTexture)
+            {
+                workingTexture = new Texture2D(originalTexture.width, originalTexture.height, TextureFormat.RGBA32, false);
+                workingTexture.filterMode = FilterMode.Point;
+                workingTexture.wrapMode = TextureWrapMode.Clamp;
 
-            targetAtlas.material.mainTexture = newTexture;
+                RenderTexture rt = RenderTexture.GetTemporary(originalTexture.width, originalTexture.height, 0);
+                Graphics.Blit(originalTexture, rt);
+                RenderTexture.active = rt;
+                workingTexture.ReadPixels(new Rect(0, 0, originalTexture.width, originalTexture.height), 0, 0);
+                workingTexture.Apply();
+                RenderTexture.active = null;
+                RenderTexture.ReleaseTemporary(rt);
+
+                targetAtlas.material.mainTexture = workingTexture;
+            }
+            else
+            {
+                workingTexture = originalTexture;
+            }
 
             foreach (var item in sourceAtlas.Items)
             {
@@ -757,19 +778,71 @@ namespace AutoTranslate
                 int height = Mathf.RoundToInt(item.region.height * sourceAtlas.Texture.height);
 
                 Rect uvRect = targetAtlas.FindFirstValidEmptySpace(new IntVector2(width, height));
-                int targetX = Mathf.RoundToInt(uvRect.x * newTexture.width);
-                int targetY = Mathf.RoundToInt(uvRect.y * newTexture.height);
+                int targetX = Mathf.RoundToInt(uvRect.x * workingTexture.width);
+                int targetY = Mathf.RoundToInt(uvRect.y * workingTexture.height);
 
                 Color[] pixels = sourceAtlas.Texture.GetPixels(sourceX, sourceY, width, height);
-                newTexture.SetPixels(targetX, targetY, width, height, pixels);
+                workingTexture.SetPixels(targetX, targetY, width, height, pixels);
 
                 AddItemToAtlasManually(targetAtlas, item.name, uvRect, new Vector2(width, height));
             }
 
-            newTexture.Apply();
+            workingTexture.Apply();
 
-            targetAtlas.material.mainTexture.filterMode = FilterMode.Point;
-            atlasCopied = true;
+            if (needNewTexture)
+            {
+                targetAtlas.material.mainTexture.filterMode = FilterMode.Point;
+            }
+
+            mergedAtlases.Add(sourceAtlas.GetInstanceID());
+            return true;
+        }
+
+        public void InitialCopyAtlasItems()
+        {
+            if (initialAtlasCopied)
+                return;
+
+            if (GameUIRoot.Instance?.ConversationBar?.portraitSprite?.Atlas != null)
+            {
+                if (CopyAtlasItems(GameUIRoot.Instance.ConversationBar.portraitSprite.Atlas))
+                {
+                    initialAtlasCopied = true;
+
+                    foreach (var field in extraAtlases)
+                    {
+                        if (field.GetValue(null) is dfAtlas atlas)
+                            CopyAtlasItems(atlas);
+                    }
+                    extraAtlases.Clear();
+                }
+            }
+        }
+
+        public void CopyExtraAtlasItems(dfAtlas sourceAtlas)
+        {
+            if (initialAtlasCopied)
+                CopyAtlasItems(sourceAtlas);
+        }
+
+        private void MarkExtraAtlas()
+        {
+            if (Chainloader.PluginInfos.ContainsKey("somebunny.etg.planetsideofgunymede"))
+            {
+                FieldInfo fieldInfo = AccessTools.TypeByName("Planetside.StaticSpriteDefinitions")?.GetField("PlanetsideUIAtlas", BindingFlags.Public | BindingFlags.Static);
+                if (fieldInfo != null)
+                {
+                    extraAtlases.Add(fieldInfo);
+                }
+            }
+            if (Chainloader.PluginInfos.ContainsKey("somebunny.etg.modularcharacter"))
+            {
+                FieldInfo fieldInfo = AccessTools.TypeByName("ModularMod.StaticCollections")?.GetField("ModularUIAtlas", BindingFlags.Public | BindingFlags.Static);
+                if (fieldInfo != null)
+                {
+                    extraAtlases.Add(fieldInfo);
+                }
+            }
         }
     }
 }

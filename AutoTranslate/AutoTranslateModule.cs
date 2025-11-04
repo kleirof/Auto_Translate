@@ -6,6 +6,7 @@ using System;
 using System.Reflection;
 using BepInEx.Configuration;
 using System.IO;
+using System.Collections.Generic;
 
 namespace AutoTranslate
 {
@@ -16,7 +17,7 @@ namespace AutoTranslate
     {
         public const string GUID = "kleirof.etg.autotranslate";
         public const string NAME = "Auto Translate";
-        public const string VERSION = "1.2.4";
+        public const string VERSION = "1.2.5";
         public const string TEXT_COLOR = "#AA3399";
 
         internal static AutoTranslateModule instance;
@@ -165,7 +166,7 @@ namespace AutoTranslate
                 Log($"{NAME} v{VERSION} started successfully.", TEXT_COLOR);
             Log($"   Translate Api: {config.TranslationAPI}", TEXT_COLOR);
 
-            fontManager?.InitializeFontAfterGameManager(OverridedFont.Value);
+            fontManager?.InitializeAfterGameManager(OverridedFont.Value);
             statusLabel?.InitializeStatusLabel();
 
             ETGModConsole.Commands.AddGroup("autotranslate", LogHelp);
@@ -375,7 +376,7 @@ namespace AutoTranslate
             DfTextScaleExpandToValue = Config.Bind(
                 "2.Font",
                 "DfTextScaleExpandToValue",
-                2f,
+                1.5f,
                 "低于门槛的Df TextScale被扩大到多少。How much is the Df TextScale below the threshold expanded to."
                 );
 

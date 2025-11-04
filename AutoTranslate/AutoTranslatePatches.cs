@@ -128,7 +128,13 @@ namespace AutoTranslate
             {
                 instance.Font = fontBase;
                 if (fontBase is dfFont dfFont)
-                    instance.Atlas = dfFont.Atlas;
+                {
+                    if (instance.Atlas != dfFont.Atlas)
+                    {
+                        FontManager.instance.CopyExtraAtlasItems(instance.Atlas);
+                        instance.Atlas = dfFont.Atlas;
+                    }
+                }
 
                 if (config.DfTextScaleExpandThreshold >= 0 && instance.TextScale < config.DfTextScaleExpandThreshold)
                     instance.TextScale = config.DfTextScaleExpandToValue;
@@ -809,7 +815,7 @@ namespace AutoTranslate
             [HarmonyPrefix]
             public static void LoadNextLevelPrefix()
             {
-                FontManager.instance.CopyAtlasItems();
+                FontManager.instance.InitialCopyAtlasItems();
             }
         }
 
