@@ -17,7 +17,7 @@ namespace AutoTranslate
     {
         public const string GUID = "kleirof.etg.autotranslate";
         public const string NAME = "Auto Translate";
-        public const string VERSION = "1.2.5";
+        public const string VERSION = "1.2.6";
         public const string TEXT_COLOR = "#AA3399";
 
         internal static AutoTranslateModule instance;

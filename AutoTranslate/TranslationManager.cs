@@ -917,24 +917,30 @@ namespace AutoTranslate
                 int startIndex = TextProcessor.IndexOfString(dfLabel.text, original);
                 if (startIndex != -1)
                 {
-                    bool isDefaultLabel = dfLabel.gameObject?.name == "DefaultLabel";
+                    GameObject go = dfLabel.gameObject;
+                    bool isDefaultLabel = go?.name == "DefaultLabel";
                     float originalHeight = dfLabel.Height;
 
                     dfFontBase fontBase = FontManager.instance?.dfFontBase;
                     if (fontBase != null && dfLabel.font != fontBase)
                     {
                         dfLabel.Font = fontBase;
+                        bool isBossLabel = go != null && go.name == "Boss Name Label" || go.name == "Boss Quote Label" || go.name == "Boss Subtitle Label";
                         if (fontBase is dfFont dfFont)
                         {
                             if (dfLabel.Atlas != dfFont.Atlas)
                             {
-                                FontManager.instance.CopyExtraAtlasItems(dfLabel.Atlas);
+                                if (!isBossLabel && dfLabel.Atlas.name != "Bosscard Atlas" && dfLabel.Atlas.name != "Ammonomicon Atlas")
+                                    FontManager.instance.CopyExtraAtlasItems(dfLabel.Atlas);
                                 dfLabel.Atlas = dfFont.Atlas;
                             }
                         }
 
-                        if (config.DfTextScaleExpandThreshold >= 0 && dfLabel.TextScale < config.DfTextScaleExpandThreshold)
+                        if (config.DfTextScaleExpandThreshold >= 0 && dfLabel.TextScale < config.DfTextScaleExpandThreshold && !isBossLabel)
                             dfLabel.TextScale = config.DfTextScaleExpandToValue;
+
+                        if (isBossLabel)
+                            dfLabel.gameObject.transform.localScale *= 6;
                     }
 
                     resultBuilder.Append(originalText, 0, startIndex)
@@ -1012,7 +1018,11 @@ namespace AutoTranslate
                     resultBuilder.Append(originalText, 0, startIndex)
                       .Append(result)
                       .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
-                    textMesh.data.text = resultBuilder.ToString();
+                    TextBoxManager textBox = textMesh.transform?.parent?.parent?.parent?.GetComponent<TextBoxManager>();
+                    if (textBox == null)
+                        textMesh.data.text = resultBuilder.ToString();
+                    else 
+                        UpdateTextOnly(textMesh.GetComponentInParent<TextBoxManager>(), resultBuilder.ToString());
 
                     textMesh.SetNeedUpdate(tk2dTextMesh.UpdateFlags.UpdateText);
                 }
@@ -1083,6 +1093,74 @@ namespace AutoTranslate
             {
                 Debug.LogError($"保存失败 Saving failed: {ex.Message}");
             }
+        }
+
+        public static void UpdateTextOnly(TextBoxManager textBox, string newText)
+        {
+            if (textBox == null || !textBox.isActiveAndEnabled)
+                return;
+
+            Vector2 oldBoxSize = textBox.boxSprite.dimensions;
+            Vector3 oldBoxLocalPos = textBox.boxSpriteTransform.localPosition;
+
+            Bounds oldTrueBounds = textBox.textMesh.GetTrueBounds();
+            float oldWidth = Mathf.Ceil((oldTrueBounds.size.x + textBox.boxPadding * 2f + textBox.additionalPaddingLeft + textBox.additionalPaddingRight) * 16f) / 16f;
+            float oldHeight = Mathf.Ceil((oldTrueBounds.size.y + textBox.boxPadding * 2f + textBox.additionalPaddingTop + textBox.additionalPaddingBottom) * 16f) / 16f;
+
+            if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+            {
+                oldWidth += textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...").extents.x * 2f;
+            }
+
+            float oldPixelWidth = oldWidth * 16f;
+            float oldPixelHeight = oldHeight * 16f;
+
+            textBox.textMesh.UpgradeData();
+            textBox.textMesh.data.text = newText;
+            textBox.textMesh.SetNeedUpdate(tk2dTextMesh.UpdateFlags.UpdateText);
+            textBox.textMesh.ForceBuild();
+
+            Bounds newTrueBounds = textBox.textMesh.GetTrueBounds();
+            float newWidth = Mathf.Ceil((newTrueBounds.size.x + textBox.boxPadding * 2f + textBox.additionalPaddingLeft + textBox.additionalPaddingRight) * 16f) / 16f;
+            float newHeight = Mathf.Ceil((newTrueBounds.size.y + textBox.boxPadding * 2f + textBox.additionalPaddingTop + textBox.additionalPaddingBottom) * 16f) / 16f;
+
+            if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+            {
+                newWidth += textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...").extents.x * 3f;
+            }
+
+            float newPixelWidth = newWidth * 16f;
+            float newPixelHeight = newHeight * 16f;
+
+            float deltaWidth = newPixelWidth - oldPixelWidth;
+            float deltaHeight = newPixelHeight - oldPixelHeight;
+
+            textBox.boxSprite.dimensions = oldBoxSize + new Vector2(deltaWidth, deltaHeight);
+            textBox.boxSprite.ForceBuild();
+
+            float y = BraveMathCollege.QuantizeFloat(textBox.boxSprite.dimensions.y / 16f - textBox.boxPadding - textBox.additionalPaddingTop, 0.0625f);
+
+            if (textBox.textMesh.anchor == TextAnchor.UpperLeft)
+            {
+                textBox.textMeshTransform.localPosition = new Vector3(textBox.boxPadding + textBox.additionalPaddingLeft, y, -0.1f);
+            }
+            else if (textBox.textMesh.anchor == TextAnchor.UpperCenter)
+            {
+                textBox.textMeshTransform.localPosition = new Vector3(newWidth / 2f, y, -0.1f);
+            }
+
+            textBox.textMeshTransform.localPosition += new Vector3(0.0234375f, 0.0234375f, 0f);
+
+            if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+            {
+                Bounds estimatedMeshBoundsForString = textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...");
+                textBox.continueTextMeshTransform.localPosition = new Vector3(newWidth - textBox.continuePaddingRight - estimatedMeshBoundsForString.extents.x * 3f, textBox.continuePaddingBottom, -0.1f);
+            }
+
+            float num = -oldBoxLocalPos.x / (oldBoxSize.x / 16f);
+            float newX = BraveMathCollege.QuantizeFloat(-1f * num * (textBox.boxSprite.dimensions.x / 16f), 0.0625f);
+
+            textBox.boxSpriteTransform.localPosition = textBox.boxSpriteTransform.localPosition.WithX(newX);
         }
     }
 }

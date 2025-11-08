@@ -739,7 +739,7 @@ namespace AutoTranslate
                 targetAtlas = GetGameFont()?.Atlas;
             }
 
-            if (targetAtlas == null) 
+            if (targetAtlas == null || targetAtlas == sourceAtlas) 
                 return false;
 
             Texture2D originalTexture = targetAtlas.Texture;
