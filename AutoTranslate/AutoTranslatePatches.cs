@@ -144,6 +144,8 @@ namespace AutoTranslate
 
                 if (isBossLabel)
                     instance.gameObject.transform.localScale *= 6;
+
+                instance.OnSizeChanged();
             }
 
             if (config.TranslateTextFromDfLabel)
@@ -164,6 +166,8 @@ namespace AutoTranslate
 
                 if (config.DfTextScaleExpandThreshold >= 0 && instance.TextScale < config.DfTextScaleExpandThreshold)
                     instance.TextScale = config.DfTextScaleExpandToValue;
+
+                instance.OnSizeChanged();
             }
 
             string added = AddMissingBracket(instance.text);
@@ -172,6 +176,8 @@ namespace AutoTranslate
             {
                 instance.text = added;
                 instance.Invalidate();
+
+                instance.OnSizeChanged();
             }
 
             if (config.TranslateTextFromDfButton)

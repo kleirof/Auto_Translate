@@ -55,6 +55,11 @@ namespace AutoTranslate
         private string cachedString;
         private TextObject cachedObject;
 
+        private static readonly HashSet<string> deadLeftNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Statbar_Gungeoneer", "Statbar_Area", "Statbar_Time", "Statbar_Money", "Statbar_Kills"
+        };
+
         public void Update()
         {
             if (Input.GetKeyDown(config.ToggleTranslationKeyBinding))
@@ -174,7 +179,7 @@ namespace AutoTranslate
             {
                 yield return null;
             }
-            SetStatusLabelText(); 
+            SetStatusLabelText();
             if (exceededThreshold == true)
                 StatusLabelController.instance?.SetHighlight();
 
@@ -946,13 +951,60 @@ namespace AutoTranslate
                     resultBuilder.Append(originalText, 0, startIndex)
                       .Append(result)
                       .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
-                    dfLabel.text = resultBuilder.ToString();
 
+                    dfLabel.text = result;
                     dfLabel.Invalidate();
+
                     if (isDefaultLabel)
                     {
                         Vector3 position = dfLabel.RelativePosition;
                         dfLabel.RelativePosition = new Vector3(position.x, position.y - dfLabel.Height + originalHeight, position.z);
+                    }
+
+                    dfControl parent = dfLabel.parent;
+                    dfControl grandparent = parent?.parent;
+                    string parentName = parent?.name;
+                    string grandparentName = grandparent?.name;
+
+                    bool isDeadLeft = grandparent != null && deadLeftNames.Contains(grandparentName);
+
+                    if (!isDeadLeft)
+                        dfLabel.OnSizeChanged();
+
+                    if (parent != null)
+                    {
+                        float width = dfLabel.GetAutosizeWidth();
+                        dfSlicedSprite sprite = null;
+                        bool shouldGetSprite = parentName.StartsWith("Tape Line", StringComparison.Ordinal) ||
+                                              parentName.StartsWith("TapeLabel", StringComparison.Ordinal) ||
+                                              parentName == "LabelBox";
+
+                        if (shouldGetSprite)
+                        {
+                            sprite = parent.GetComponentInChildren<dfSlicedSprite>();
+                        }
+
+                        if (parentName.StartsWith("Tape Line", StringComparison.Ordinal))
+                        {
+                            if (sprite != null && sprite.name == "Sliced Sprite")
+                                sprite.Width = width / 4f + 12f;
+                        }
+                        else if (parentName.StartsWith("TapeLabel", StringComparison.Ordinal) || parentName == "LabelBox")
+                        {
+                            if (sprite != null && sprite.name == "Sliced Sprite")
+                            {
+                                if (isDeadLeft)
+                                    StartCoroutine(LateUpdateDeadLeft(sprite, width));
+                                else
+                                {
+                                    sprite.Width = Mathf.CeilToInt(width / 4f) + 5;
+                                    if (parentName.StartsWith("TapeLabel", StringComparison.Ordinal) && grandparentName == "KilledByZone")
+                                    {
+                                        sprite.Position = sprite.Position.WithX(dfLabel.Position.x + width / 2 - sprite.Width * 2);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -982,6 +1034,7 @@ namespace AutoTranslate
                     dfButton.text = resultBuilder.ToString();
 
                     dfButton.Invalidate();
+                    dfButton.OnSizeChanged();
                 }
             }
             else if (control is SGUI.SLabel sLabel)
@@ -1021,12 +1074,19 @@ namespace AutoTranslate
                     TextBoxManager textBox = textMesh.transform?.parent?.parent?.parent?.GetComponent<TextBoxManager>();
                     if (textBox == null)
                         textMesh.data.text = resultBuilder.ToString();
-                    else 
+                    else
                         UpdateTextOnly(textMesh.GetComponentInParent<TextBoxManager>(), resultBuilder.ToString());
 
                     textMesh.SetNeedUpdate(tk2dTextMesh.UpdateFlags.UpdateText);
                 }
             }
+        }
+
+        private IEnumerator LateUpdateDeadLeft(dfSlicedSprite componentInChildren, float width)
+        {
+            yield return null;
+            componentInChildren.Width = Mathf.CeilToInt(width / 4f) + 5;
+            yield break;
         }
 
         public void ReadAndRestoreTranslationCache(string filePath)
@@ -1070,7 +1130,7 @@ namespace AutoTranslate
                                   ?? new List<KeyValuePair<string, string>>();
                 }
 
-                List<KeyValuePair<string, string>> newPairs = translationCache. GetOrderedKeyValuePairsReverse();
+                List<KeyValuePair<string, string>> newPairs = translationCache.GetOrderedKeyValuePairsReverse();
 
                 var mergedPairs = existingPairs
                     .Concat(newPairs)
