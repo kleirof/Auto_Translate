@@ -55,6 +55,11 @@ namespace AutoTranslate
         private string cachedString;
         private TextObject cachedObject;
 
+        internal static readonly HashSet<string> bossCardNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Boss Name Label", "Boss Quote Label", "Boss Subtitle Label"
+        };
+
         private static readonly HashSet<string> deadLeftNames = new HashSet<string>(StringComparer.Ordinal)
         {
             "Statbar_Gungeoneer", "Statbar_Area", "Statbar_Time", "Statbar_Money", "Statbar_Kills"
@@ -919,86 +924,71 @@ namespace AutoTranslate
                     return;
 
                 string originalText = dfLabel.text;
-                int startIndex = TextProcessor.IndexOfString(dfLabel.text, original);
+                int startIndex = TextProcessor.IndexOfString(originalText, original);
                 if (startIndex != -1)
                 {
-                    GameObject go = dfLabel.gameObject;
-                    bool isDefaultLabel = go?.name == "DefaultLabel";
-                    float originalHeight = dfLabel.Height;
-
-                    dfFontBase fontBase = FontManager.instance?.dfFontBase;
-                    if (fontBase != null && dfLabel.font != fontBase)
+                    DfLabelFlagManager flagManager = DfLabelFlagManager.GetOrAddFlagManager(dfLabel);
+                    if (flagManager != null)
                     {
-                        dfLabel.Font = fontBase;
-                        bool isBossLabel = go != null && go.name == "Boss Name Label" || go.name == "Boss Quote Label" || go.name == "Boss Subtitle Label";
-                        if (fontBase is dfFont dfFont)
+                        bool isDefaultLabel = flagManager.IsDefaultLabel;
+                        float originalHeight = dfLabel.Height;
+
+                        dfFontBase fontBase = FontManager.instance?.dfFontBase;
+                        if (fontBase != null && dfLabel.font != fontBase)
                         {
-                            if (dfLabel.Atlas != dfFont.Atlas)
+                            dfLabel.Font = fontBase;
+                            bool isBossLabel = flagManager.IsBossLabel;
+                            if (fontBase is dfFont dfFont)
                             {
-                                if (!isBossLabel && dfLabel.Atlas.name != "Bosscard Atlas" && dfLabel.Atlas.name != "Ammonomicon Atlas")
+                                if (dfLabel.Atlas != dfFont.Atlas)
+                                {
                                     FontManager.instance.CopyExtraAtlasItems(dfLabel.Atlas);
-                                dfLabel.Atlas = dfFont.Atlas;
+                                    dfLabel.Atlas = dfFont.Atlas;
+                                }
                             }
+
+                            if (config.DfTextScaleExpandThreshold >= 0 && dfLabel.TextScale < config.DfTextScaleExpandThreshold && !isBossLabel)
+                                dfLabel.TextScale = config.DfTextScaleExpandToValue;
+
+                            if (isBossLabel)
+                                dfLabel.gameObject.transform.localScale *= 6;
                         }
 
-                        if (config.DfTextScaleExpandThreshold >= 0 && dfLabel.TextScale < config.DfTextScaleExpandThreshold && !isBossLabel)
-                            dfLabel.TextScale = config.DfTextScaleExpandToValue;
+                        resultBuilder.Append(originalText, 0, startIndex)
+                          .Append(result)
+                          .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
 
-                        if (isBossLabel)
-                            dfLabel.gameObject.transform.localScale *= 6;
-                    }
+                        dfLabel.text = resultBuilder.ToString();
+                        dfLabel.Invalidate();
 
-                    resultBuilder.Append(originalText, 0, startIndex)
-                      .Append(result)
-                      .Append(originalText, startIndex + original.Length, originalText.Length - (startIndex + original.Length));
+                        if (isDefaultLabel)
+                        {
+                            Vector3 position = dfLabel.RelativePosition;
+                            dfLabel.RelativePosition = new Vector3(position.x, position.y - dfLabel.Height + originalHeight, position.z);
+                        }
 
-                    dfLabel.text = result;
-                    dfLabel.Invalidate();
+                        bool isDeadLeft = flagManager.IsDeadLeft;
 
-                    if (isDefaultLabel)
-                    {
-                        Vector3 position = dfLabel.RelativePosition;
-                        dfLabel.RelativePosition = new Vector3(position.x, position.y - dfLabel.Height + originalHeight, position.z);
-                    }
+                        if (!isDeadLeft && !isDefaultLabel)
+                            dfLabel.OnSizeChanged();
 
-                    dfControl parent = dfLabel.parent;
-                    dfControl grandparent = parent?.parent;
-                    string parentName = parent?.name;
-                    string grandparentName = grandparent?.name;
-
-                    bool isDeadLeft = grandparent != null && deadLeftNames.Contains(grandparentName);
-
-                    if (!isDeadLeft)
-                        dfLabel.OnSizeChanged();
-
-                    if (parent != null)
-                    {
                         float width = dfLabel.GetAutosizeWidth();
-                        dfSlicedSprite sprite = null;
-                        bool shouldGetSprite = parentName.StartsWith("Tape Line", StringComparison.Ordinal) ||
-                                              parentName.StartsWith("TapeLabel", StringComparison.Ordinal) ||
-                                              parentName == "LabelBox";
 
-                        if (shouldGetSprite)
+                        dfSlicedSprite sprite = flagManager.SlicedSprite;
+                        if (flagManager.IsSlicedSprite && flagManager.SlicedSprite != null)
                         {
-                            sprite = parent.GetComponentInChildren<dfSlicedSprite>();
-                        }
-
-                        if (parentName.StartsWith("Tape Line", StringComparison.Ordinal))
-                        {
-                            if (sprite != null && sprite.name == "Sliced Sprite")
+                            if (flagManager.IsTapeLine)
+                            {
                                 sprite.Width = width / 4f + 12f;
-                        }
-                        else if (parentName.StartsWith("TapeLabel", StringComparison.Ordinal) || parentName == "LabelBox")
-                        {
-                            if (sprite != null && sprite.name == "Sliced Sprite")
+                            }
+                            else if (flagManager.IsTapeLabel || flagManager.IsLabelBox)
                             {
                                 if (isDeadLeft)
                                     StartCoroutine(LateUpdateDeadLeft(sprite, width));
                                 else
                                 {
                                     sprite.Width = Mathf.CeilToInt(width / 4f) + 5;
-                                    if (parentName.StartsWith("TapeLabel", StringComparison.Ordinal) && grandparentName == "KilledByZone")
+                                    if (flagManager.IsTapeLabel && flagManager.IsKilledByZone)
                                     {
                                         sprite.Position = sprite.Position.WithX(dfLabel.Position.x + width / 2 - sprite.Width * 2);
                                     }
@@ -1085,6 +1075,8 @@ namespace AutoTranslate
         private IEnumerator LateUpdateDeadLeft(dfSlicedSprite componentInChildren, float width)
         {
             yield return null;
+            if (componentInChildren == null)
+                yield break;
             componentInChildren.Width = Mathf.CeilToInt(width / 4f) + 5;
             yield break;
         }

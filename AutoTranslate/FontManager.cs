@@ -55,7 +55,10 @@ namespace AutoTranslate
 
         private bool initialAtlasCopied = false;
 
-        private HashSet<FieldInfo> extraAtlases = new HashSet<FieldInfo>();
+        private HashSet<FieldInfo> extraAtlasFields = new HashSet<FieldInfo>();
+
+        internal dfAtlas ammonomiconAtlas;
+        internal dfAtlas bossCardAtlas;
 
         public FontManager()
         {
@@ -718,6 +721,9 @@ namespace AutoTranslate
             if (sourceAtlas == null) 
                 return false;
 
+            if (sourceAtlas == ammonomiconAtlas || sourceAtlas == bossCardAtlas)
+                return false;
+
             if (mergedAtlases.Contains(sourceAtlas.GetInstanceID()))
                 return false;
 
@@ -809,12 +815,12 @@ namespace AutoTranslate
                 {
                     initialAtlasCopied = true;
 
-                    foreach (var field in extraAtlases)
+                    foreach (var field in extraAtlasFields)
                     {
                         if (field.GetValue(null) is dfAtlas atlas)
                             CopyAtlasItems(atlas);
                     }
-                    extraAtlases.Clear();
+                    extraAtlasFields.Clear();
                 }
             }
         }
@@ -832,7 +838,7 @@ namespace AutoTranslate
                 FieldInfo fieldInfo = AccessTools.TypeByName("Planetside.StaticSpriteDefinitions")?.GetField("PlanetsideUIAtlas", BindingFlags.Public | BindingFlags.Static);
                 if (fieldInfo != null)
                 {
-                    extraAtlases.Add(fieldInfo);
+                    extraAtlasFields.Add(fieldInfo);
                 }
             }
             if (Chainloader.PluginInfos.ContainsKey("somebunny.etg.modularcharacter"))
@@ -840,8 +846,18 @@ namespace AutoTranslate
                 FieldInfo fieldInfo = AccessTools.TypeByName("ModularMod.StaticCollections")?.GetField("ModularUIAtlas", BindingFlags.Public | BindingFlags.Static);
                 if (fieldInfo != null)
                 {
-                    extraAtlases.Add(fieldInfo);
+                    extraAtlasFields.Add(fieldInfo);
                 }
+            }
+
+            dfAtlas[] atlases = Resources.FindObjectsOfTypeAll<dfAtlas>();
+            foreach (dfAtlas atlas in atlases)
+            {
+                string name = atlas.name;
+                if (name == "Ammonomicon Atlas")
+                    ammonomiconAtlas = atlas;
+                else if (name == "Bosscard Atlas")
+                    bossCardAtlas = atlas;
             }
         }
     }

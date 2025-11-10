@@ -253,6 +253,7 @@
     <Compile Include="ITranslationService.cs" />
     <Compile Include="LLMTranslationService.cs" />
     <Compile Include="LRUCache.cs" />
+    <Compile Include="DfLabelFlagManager.cs" />
     <Compile Include="ObjectPool.cs" />
     <Compile Include="Pools.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

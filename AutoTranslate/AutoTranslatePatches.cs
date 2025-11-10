@@ -123,18 +123,20 @@ namespace AutoTranslate
             if (instance == null || instance.Equals(null))
                 return;
 
+            DfLabelFlagManager flagManager = DfLabelFlagManager.GetOrAddFlagManager(instance);
+            if (flagManager == null)
+                return;
+
             dfFontBase fontBase = FontManager.instance?.dfFontBase;
             if (fontBase != null && instance.font != fontBase)
             {
                 instance.Font = fontBase;
-                GameObject go = instance.gameObject;
-                bool isBossLabel = go != null && go.name == "Boss Name Label" || go.name == "Boss Quote Label" || go.name == "Boss Subtitle Label";
+                bool isBossLabel = flagManager.IsBossLabel;
                 if (fontBase is dfFont dfFont)
                 {
                     if (instance.Atlas != dfFont.Atlas)
                     {
-                        if (!isBossLabel && instance.Atlas.name != "Bosscard Atlas" && instance.Atlas.name != "Ammonomicon Atlas")
-                            FontManager.instance.CopyExtraAtlasItems(instance.Atlas);
+                        FontManager.instance.CopyExtraAtlasItems(instance.Atlas);
                         instance.Atlas = dfFont.Atlas;
                     }
                 }
@@ -144,8 +146,6 @@ namespace AutoTranslate
 
                 if (isBossLabel)
                     instance.gameObject.transform.localScale *= 6;
-
-                instance.OnSizeChanged();
             }
 
             if (config.TranslateTextFromDfLabel)
@@ -166,8 +166,6 @@ namespace AutoTranslate
 
                 if (config.DfTextScaleExpandThreshold >= 0 && instance.TextScale < config.DfTextScaleExpandThreshold)
                     instance.TextScale = config.DfTextScaleExpandToValue;
-
-                instance.OnSizeChanged();
             }
 
             string added = AddMissingBracket(instance.text);
@@ -176,8 +174,6 @@ namespace AutoTranslate
             {
                 instance.text = added;
                 instance.Invalidate();
-
-                instance.OnSizeChanged();
             }
 
             if (config.TranslateTextFromDfButton)
