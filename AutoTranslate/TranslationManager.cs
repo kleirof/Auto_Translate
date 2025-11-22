@@ -37,8 +37,8 @@ namespace AutoTranslate
         private Regex eachLineRegex;
         private Regex ignoredSubstringWithinTextRegex;
 
-        private string[] newLineSymbols = new string[] { "\r\n", "\r", "\n" };
-        private char[] semicolon = new char[] { ';' };
+        private readonly string[] newLineSymbols = new string[] { "\r\n", "\r", "\n" };
+        private readonly char[] semicolon = new char[] { ';' };
 
         private StringBuilder translatedTextBuilder;
 
@@ -54,16 +54,6 @@ namespace AutoTranslate
 
         private string cachedString;
         private TextObject cachedObject;
-
-        internal static readonly HashSet<string> bossCardNames = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "Boss Name Label", "Boss Quote Label", "Boss Subtitle Label"
-        };
-
-        private static readonly HashSet<string> deadLeftNames = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "Statbar_Gungeoneer", "Statbar_Area", "Statbar_Time", "Statbar_Money", "Statbar_Kills"
-        };
 
         public void Update()
         {
@@ -297,13 +287,48 @@ namespace AutoTranslate
                     yield return null;
                 }
 
-                DeduplicateTexts();
+                bool shouldContinue = false;
+
+                try
+                {
+                    DeduplicateTexts();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"DeduplicateTexts 失败 DeduplicateTexts failed: {ex.Message}");
+                    ClearCurrentBatchResources();
+                    shouldContinue = true;
+                }
+
+                if (shouldContinue)
+                {
+                    yield return null;
+                    continue;
+                }
                 yield return null;
 
                 if (uniqueTexts.Count > 0)
                 {
-                    int count = GenerateBatch();
+                    int count = 0;
+
+                    try
+                    {
+                        count = GenerateBatch();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"GenerateBatch 失败 GenerateBatch failed: {ex.Message}");
+                        ClearCurrentBatchResources();
+                        shouldContinue = true;
+                    }
+
+                    if (shouldContinue)
+                    {
+                        yield return null;
+                        continue;
+                    }
                     yield return null;
+
                     yield return StartCoroutine(TranslateBatchCoroutine(count));
                 }
 
@@ -618,12 +643,28 @@ namespace AutoTranslate
                 yield break;
             }
 
-            if (exceededThreshold == false && config.RequestedCharacterCountAlertThreshold > 0 && requestedCharacterCount + batchCharacterCount > config.RequestedCharacterCountAlertThreshold)
+            bool hasError = false;
+
+            try
             {
-                exceededThreshold = true;
-                StatusLabelController.instance?.SetHighlight();
-                ForceSetTranslte(false);
-                SetStatusLabelText();
+                if (exceededThreshold == false && config.RequestedCharacterCountAlertThreshold > 0 && requestedCharacterCount + batchCharacterCount > config.RequestedCharacterCountAlertThreshold)
+                {
+                    exceededThreshold = true;
+                    StatusLabelController.instance?.SetHighlight();
+                    ForceSetTranslte(false);
+                    SetStatusLabelText();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"预处理失败 Preprocessing failed: {ex.Message}");
+                hasError = true;
+            }
+
+            if (hasError)
+            {
+                ClearCurrentBatchResources();
+                yield break;
             }
 
             while (!translateOn)
@@ -640,7 +681,12 @@ namespace AutoTranslate
             }
             yield return null;
 
-            yield return StartCoroutine(translationService.StartTranslation(
+            bool translationCompleted = false;
+            Coroutine translationCoroutine = null;
+
+            try
+            {
+                translationCoroutine = StartCoroutine(translationService.StartTranslation(
                 batchSubTexts,
                 (translatedTexts) =>
                 {
@@ -724,6 +770,7 @@ namespace AutoTranslate
                                 textControlMap.Remove(originalText);
                             }
                         }
+                        translationCompleted = true;
                     }
                     finally
                     {
@@ -732,8 +779,24 @@ namespace AutoTranslate
                             Pools.listStringPool.Return(translatedTexts);
                         }
                     }
-                })
-            );
+                }));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"启动翻译失败 Failed to start translation: {ex.Message}");
+                hasError = true;
+            }
+
+            if (translationCoroutine != null)
+            {
+                yield return translationCoroutine;
+            }
+
+            if (!translationCompleted)
+            {
+                Debug.LogError("翻译未成功完成。Translation not completed successfully.");
+                ClearCurrentBatchResources();
+            }
         }
 
         public void AddTranslationRequest(string text, object control)
@@ -1149,70 +1212,127 @@ namespace AutoTranslate
 
         public static void UpdateTextOnly(TextBoxManager textBox, string newText)
         {
-            if (textBox == null || !textBox.isActiveAndEnabled)
+            try
+            {
+                if (textBox == null || !textBox.isActiveAndEnabled)
+                    return;
+
+                Vector2 oldBoxSize = textBox.boxSprite.dimensions;
+                Vector3 oldBoxLocalPos = textBox.boxSpriteTransform.localPosition;
+
+                Bounds oldTrueBounds = textBox.textMesh.GetTrueBounds();
+                float oldWidth = Mathf.Ceil((oldTrueBounds.size.x + textBox.boxPadding * 2f + textBox.additionalPaddingLeft + textBox.additionalPaddingRight) * 16f) / 16f;
+                float oldHeight = Mathf.Ceil((oldTrueBounds.size.y + textBox.boxPadding * 2f + textBox.additionalPaddingTop + textBox.additionalPaddingBottom) * 16f) / 16f;
+
+                if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+                {
+                    oldWidth += textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...").extents.x * 2f;
+                }
+
+                float oldPixelWidth = oldWidth * 16f;
+                float oldPixelHeight = oldHeight * 16f;
+
+                textBox.textMesh.UpgradeData();
+                textBox.textMesh.data.text = newText;
+                textBox.textMesh.SetNeedUpdate(tk2dTextMesh.UpdateFlags.UpdateText);
+                textBox.textMesh.ForceBuild();
+
+                Bounds newTrueBounds = textBox.textMesh.GetTrueBounds();
+                float newWidth = Mathf.Ceil((newTrueBounds.size.x + textBox.boxPadding * 2f + textBox.additionalPaddingLeft + textBox.additionalPaddingRight) * 16f) / 16f;
+                float newHeight = Mathf.Ceil((newTrueBounds.size.y + textBox.boxPadding * 2f + textBox.additionalPaddingTop + textBox.additionalPaddingBottom) * 16f) / 16f;
+
+                if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+                {
+                    newWidth += textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...").extents.x * 3f;
+                }
+
+                float newPixelWidth = newWidth * 16f;
+                float newPixelHeight = newHeight * 16f;
+
+                float deltaWidth = newPixelWidth - oldPixelWidth;
+                float deltaHeight = newPixelHeight - oldPixelHeight;
+
+                textBox.boxSprite.dimensions = oldBoxSize + new Vector2(deltaWidth, deltaHeight);
+                textBox.boxSprite.ForceBuild();
+
+                float y = BraveMathCollege.QuantizeFloat(textBox.boxSprite.dimensions.y / 16f - textBox.boxPadding - textBox.additionalPaddingTop, 0.0625f);
+
+                if (textBox.textMesh.anchor == TextAnchor.UpperLeft)
+                {
+                    textBox.textMeshTransform.localPosition = new Vector3(textBox.boxPadding + textBox.additionalPaddingLeft, y, -0.1f);
+                }
+                else if (textBox.textMesh.anchor == TextAnchor.UpperCenter)
+                {
+                    textBox.textMeshTransform.localPosition = new Vector3(newWidth / 2f, y, -0.1f);
+                }
+
+                textBox.textMeshTransform.localPosition += new Vector3(0.0234375f, 0.0234375f, 0f);
+
+                if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+                {
+                    Bounds estimatedMeshBoundsForString = textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...");
+                    textBox.continueTextMeshTransform.localPosition = new Vector3(newWidth - textBox.continuePaddingRight - estimatedMeshBoundsForString.extents.x * 3f, textBox.continuePaddingBottom, -0.1f);
+                }
+
+                float num = -oldBoxLocalPos.x / (oldBoxSize.x / 16f);
+                float newX = BraveMathCollege.QuantizeFloat(-1f * num * (textBox.boxSprite.dimensions.x / 16f), 0.0625f);
+
+                textBox.boxSpriteTransform.localPosition = textBox.boxSpriteTransform.localPosition.WithX(newX);
+            }
+            catch { }
+        }
+
+        private void RemoveTextFromControlTextMap(TextObject textObject)
+        {
+            if (controlTextMap.Count == 0)
                 return;
 
-            Vector2 oldBoxSize = textBox.boxSprite.dimensions;
-            Vector3 oldBoxLocalPos = textBox.boxSpriteTransform.localPosition;
-
-            Bounds oldTrueBounds = textBox.textMesh.GetTrueBounds();
-            float oldWidth = Mathf.Ceil((oldTrueBounds.size.x + textBox.boxPadding * 2f + textBox.additionalPaddingLeft + textBox.additionalPaddingRight) * 16f) / 16f;
-            float oldHeight = Mathf.Ceil((oldTrueBounds.size.y + textBox.boxPadding * 2f + textBox.additionalPaddingTop + textBox.additionalPaddingBottom) * 16f) / 16f;
-
-            if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+            if (controlTextMap.TryGetValue(textObject, out List<string> translatedTexts))
             {
-                oldWidth += textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...").extents.x * 2f;
+                Pools.listStringPool.Return(translatedTexts);
+                controlTextMap.Remove(textObject);
             }
+        }
 
-            float oldPixelWidth = oldWidth * 16f;
-            float oldPixelHeight = oldHeight * 16f;
-
-            textBox.textMesh.UpgradeData();
-            textBox.textMesh.data.text = newText;
-            textBox.textMesh.SetNeedUpdate(tk2dTextMesh.UpdateFlags.UpdateText);
-            textBox.textMesh.ForceBuild();
-
-            Bounds newTrueBounds = textBox.textMesh.GetTrueBounds();
-            float newWidth = Mathf.Ceil((newTrueBounds.size.x + textBox.boxPadding * 2f + textBox.additionalPaddingLeft + textBox.additionalPaddingRight) * 16f) / 16f;
-            float newHeight = Mathf.Ceil((newTrueBounds.size.y + textBox.boxPadding * 2f + textBox.additionalPaddingTop + textBox.additionalPaddingBottom) * 16f) / 16f;
-
-            if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
+        private void ClearCurrentBatchResources()
+        {
+            try
             {
-                newWidth += textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...").extents.x * 3f;
+                foreach (var parts in batchSplitMap.Values)
+                {
+                    if (parts != null)
+                        Pools.listStringPool.Return(parts);
+                }
+                batchSplitMap.Clear();
+
+                foreach (var controls in textControlMap.Values)
+                {
+                    if (controls != null)
+                    {
+                        foreach (var control in controls)
+                        {
+                            if (control != null)
+                            {
+                                RemoveTextFromControlTextMap(control);
+                                TextObject.SafeRelease(control);
+                            }
+                        }
+                        Pools.listTextObjectPool.Return(controls);
+                    }
+                }
+                textControlMap.Clear();
+
+                uniqueTexts.Clear();
+                batchSubTexts.Clear();
+                batchTranslationDictionary.Clear();
+
+                if (translatedTextBuilder != null)
+                    translatedTextBuilder.Length = 0;
             }
-
-            float newPixelWidth = newWidth * 16f;
-            float newPixelHeight = newHeight * 16f;
-
-            float deltaWidth = newPixelWidth - oldPixelWidth;
-            float deltaHeight = newPixelHeight - oldPixelHeight;
-
-            textBox.boxSprite.dimensions = oldBoxSize + new Vector2(deltaWidth, deltaHeight);
-            textBox.boxSprite.ForceBuild();
-
-            float y = BraveMathCollege.QuantizeFloat(textBox.boxSprite.dimensions.y / 16f - textBox.boxPadding - textBox.additionalPaddingTop, 0.0625f);
-
-            if (textBox.textMesh.anchor == TextAnchor.UpperLeft)
+            catch (Exception ex)
             {
-                textBox.textMeshTransform.localPosition = new Vector3(textBox.boxPadding + textBox.additionalPaddingLeft, y, -0.1f);
+                Debug.LogError($"清理批次资源时出错 Error clearing batch resources: {ex.Message}");
             }
-            else if (textBox.textMesh.anchor == TextAnchor.UpperCenter)
-            {
-                textBox.textMeshTransform.localPosition = new Vector3(newWidth / 2f, y, -0.1f);
-            }
-
-            textBox.textMeshTransform.localPosition += new Vector3(0.0234375f, 0.0234375f, 0f);
-
-            if (textBox.continueTextMesh && textBox.continueTextMesh.text != string.Empty)
-            {
-                Bounds estimatedMeshBoundsForString = textBox.continueTextMesh.GetEstimatedMeshBoundsForString("...");
-                textBox.continueTextMeshTransform.localPosition = new Vector3(newWidth - textBox.continuePaddingRight - estimatedMeshBoundsForString.extents.x * 3f, textBox.continuePaddingBottom, -0.1f);
-            }
-
-            float num = -oldBoxLocalPos.x / (oldBoxSize.x / 16f);
-            float newX = BraveMathCollege.QuantizeFloat(-1f * num * (textBox.boxSprite.dimensions.x / 16f), 0.0625f);
-
-            textBox.boxSpriteTransform.localPosition = textBox.boxSpriteTransform.localPosition.WithX(newX);
         }
     }
 }

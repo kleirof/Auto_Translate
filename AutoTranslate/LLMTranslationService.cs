@@ -190,7 +190,7 @@ namespace AutoTranslate
             }
             catch (Exception ex)
             {
-                Debug.LogError($"分割字符串时发生意外错误 An unexpected error occurred while splitting the string: {ex}");
+                Debug.LogError($"分割字符串时发生意外错误 An unexpected error occurred while splitting the string: {ex.Message}");
                 Pools.listStringPool.Return(result);
                 return null;
             }
@@ -260,7 +260,7 @@ namespace AutoTranslate
             }
             catch (Exception ex)
             {
-                Debug.LogError($"解析定位响应时发生错误 An error occurred while parsing the positioning response: {ex}");
+                Debug.LogError($"解析定位响应时发生错误 An error occurred while parsing the positioning response: {ex.Message}");
                 Pools.listStringPool.Return(results);
                 return null;
             }

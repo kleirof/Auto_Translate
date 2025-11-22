@@ -19,7 +19,7 @@ namespace AutoTranslate
                 catch (Exception ex)
                 {
                     Debug.LogError("从文件加载AssetBundle失败。Failed loading AssetBundle from file.");
-                    Debug.LogError(ex.ToString());
+                    Debug.LogError(ex.Message);
                 }
             }
             else
