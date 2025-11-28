@@ -25,6 +25,7 @@ namespace AutoTranslate
         internal bool TranslateTextFromDfLabel;
         internal bool TranslateTextFromDfButton;
         internal bool TranslateTextFromTk2dTextMesh;
+        internal bool EnableRateLimit;
 
         internal AutoTranslateModule.OverridedFontType OverridedFont;
         internal string FontAssetBundleName;

@@ -17,7 +17,7 @@ namespace AutoTranslate
     {
         public const string GUID = "kleirof.etg.autotranslate";
         public const string NAME = "Auto Translate";
-        public const string VERSION = "1.2.9";
+        public const string VERSION = "1.2.10";
         public const string TEXT_COLOR = "#AA3399";
 
         internal static AutoTranslateModule instance;
@@ -43,6 +43,7 @@ namespace AutoTranslate
         private ConfigEntry<bool> TranslateTextFromDfLabel;
         private ConfigEntry<bool> TranslateTextFromDfButton;
         private ConfigEntry<bool> TranslateTextFromTk2dTextMesh;
+        private ConfigEntry<bool> EnableRateLimit;
 
         private ConfigEntry<OverridedFontType> OverridedFont;
         private ConfigEntry<string> FontAssetBundleName;
@@ -322,6 +323,13 @@ namespace AutoTranslate
                 "TranslateTextFromTk2dTextMesh",
                 true,
                 "翻译Tk2dTextMesh中的文本。Translate the text in Tk2dTextMesh."
+                );
+
+            EnableRateLimit = Config.Bind(
+                "1.General", 
+                "EnableRateLimit",
+                true,
+                "限制每个文本对象在短时间内可以发送的翻译请求数量，防止系统过载。Limits the number of translation requests each text object can send in a short time to prevent system overload."
                 );
 
             OverridedFont = Config.Bind(
@@ -696,6 +704,7 @@ namespace AutoTranslate
                 TranslateTextFromDfLabel = TranslateTextFromDfLabel.Value,
                 TranslateTextFromDfButton = TranslateTextFromDfButton.Value,
                 TranslateTextFromTk2dTextMesh = TranslateTextFromTk2dTextMesh.Value,
+                EnableRateLimit = EnableRateLimit.Value,
 
                 OverridedFont = OverridedFont.Value,
                 FontAssetBundleName = FontAssetBundleName.Value,

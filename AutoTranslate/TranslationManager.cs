@@ -799,94 +799,6 @@ namespace AutoTranslate
             }
         }
 
-        public void AddTranslationRequest(string text, object control)
-        {
-            if (text == null || control == null)
-                return;
-            if (!translateOn)
-                return;
-            if (cachedObject != null && cachedObject.IsAlive && control == cachedObject.Object && text.Equals(cachedString))
-                return;
-
-            if (!NeedToTranslate(text))
-                return;
-
-            if (translationCache.TryGetValue(text, out string translatedText))
-            {
-                OnTranslationFinish(control, text, translatedText, false);
-                return;
-            }
-
-            if (fullTextTranslationCache.TryGetValue(text, out string translatedFullText))
-            {
-                OnTranslationFinish(control, text, translatedFullText, false);
-                return;
-            }
-
-            TextObject textObject = TextObject.GetTextObject(control);
-
-            cachedString = text;
-            cachedObject = textObject;
-
-            if (text.Length <= config.MaxBatchCharacterCount)
-            {
-                text = RemovePrefixFromText(text, textObject);
-                if (TextProcessor.IsNullOrWhiteSpace(text))
-                    return;
-                SubmitRequest(textObject, text);
-                if (!isProcessingQueue)
-                    StartCoroutine(ProcessTranslationQueue());
-                return;
-            }
-
-            finalChunks.Clear();
-
-            if (config.FilterForIgnoredSubstringWithinText == AutoTranslateModule.FilterForIgnoredSubstringWithinTextType.CustomRegex)
-            {
-                if (ignoredSubstringWithinTextRegex == null)
-                    AddChunks(finalChunks, text);
-                else
-                {
-                    MatchCollection matches = ignoredSubstringWithinTextRegex.Matches(text);
-                    int lastIndex = 0;
-
-                    foreach (Match match in matches)
-                    {
-                        if (lastIndex < match.Index)
-                            AddChunks(finalChunks, text.Substring(lastIndex, match.Index - lastIndex));
-
-                        finalChunks.Add(match.Value);
-                        lastIndex = match.Index + match.Length;
-                    }
-
-                    if (lastIndex < text.Length)
-                        AddChunks(finalChunks, text.Substring(lastIndex));
-                }
-            }
-            else
-            {
-                List<string> parts = Pools.listStringPool.Get();
-                SubstringFilter(parts, text, keepMatches: true);
-                foreach (var part in parts)
-                    AddChunks(finalChunks, part);
-                Pools.listStringPool.Return(parts);
-            }
-
-            foreach (var chunk in finalChunks)
-            {
-                string chunkToQueue = RemovePrefixFromText(chunk, textObject);
-                if (TextProcessor.IsNullOrWhiteSpace(chunkToQueue))
-                    continue;
-                SubmitRequest(textObject, chunkToQueue);
-            }
-
-            if (finalChunks.Count > 1)
-                textObject.Retain(finalChunks.Count - 1);
-
-            if (!isProcessingQueue)
-                StartCoroutine(ProcessTranslationQueue());
-        }
-
         private void SubmitRequest(TextObject textObject, string text)
         {
             AddTextToControlTextMap(textObject, text);
@@ -1332,6 +1244,304 @@ namespace AutoTranslate
             catch (Exception ex)
             {
                 Debug.LogError($"清理批次资源时出错 Error clearing batch resources: {ex.Message}");
+            }
+        }
+
+        public void AddTranslationRequest(string text, object control)
+        {
+            if (text == null || control == null)
+                return;
+            if (!translateOn)
+                return;
+            if (cachedObject != null && cachedObject.IsAlive && control == cachedObject.Object && text.Equals(cachedString))
+                return;
+
+            if (!NeedToTranslate(text))
+                return;
+
+            if (translationCache.TryGetValue(text, out string translatedText))
+            {
+                OnTranslationFinish(control, text, translatedText, false);
+                return;
+            }
+
+            if (fullTextTranslationCache.TryGetValue(text, out string translatedFullText))
+            {
+                OnTranslationFinish(control, text, translatedFullText, false);
+                return;
+            }
+
+            TextObject textObject = TextObject.GetTextObject(control);
+
+            cachedString = text;
+            cachedObject = textObject;
+
+            bool allowed = !config.EnableRateLimit || textObject.ShouldProcessRequest(text);
+
+            if (allowed)
+            {
+                StopExceededPolling(textObject);
+
+                if (text.Length <= config.MaxBatchCharacterCount)
+                {
+                    text = RemovePrefixFromText(text, textObject);
+                    if (TextProcessor.IsNullOrWhiteSpace(text))
+                        return;
+                    SubmitRequest(textObject, text);
+                    if (!isProcessingQueue)
+                        StartCoroutine(ProcessTranslationQueue());
+                    return;
+                }
+
+                finalChunks.Clear();
+
+                if (config.FilterForIgnoredSubstringWithinText == AutoTranslateModule.FilterForIgnoredSubstringWithinTextType.CustomRegex)
+                {
+                    if (ignoredSubstringWithinTextRegex == null)
+                        AddChunks(finalChunks, text);
+                    else
+                    {
+                        MatchCollection matches = ignoredSubstringWithinTextRegex.Matches(text);
+                        int lastIndex = 0;
+
+                        foreach (Match match in matches)
+                        {
+                            if (lastIndex < match.Index)
+                                AddChunks(finalChunks, text.Substring(lastIndex, match.Index - lastIndex));
+
+                            finalChunks.Add(match.Value);
+                            lastIndex = match.Index + match.Length;
+                        }
+
+                        if (lastIndex < text.Length)
+                            AddChunks(finalChunks, text.Substring(lastIndex));
+                    }
+                }
+                else
+                {
+                    List<string> parts = Pools.listStringPool.Get();
+                    SubstringFilter(parts, text, keepMatches: true);
+                    foreach (var part in parts)
+                        AddChunks(finalChunks, part);
+                    Pools.listStringPool.Return(parts);
+                }
+
+                foreach (var chunk in finalChunks)
+                {
+                    string chunkToQueue = RemovePrefixFromText(chunk, textObject);
+                    if (TextProcessor.IsNullOrWhiteSpace(chunkToQueue))
+                        continue;
+                    SubmitRequest(textObject, chunkToQueue);
+                }
+
+                if (finalChunks.Count > 1)
+                    textObject.Retain(finalChunks.Count - 1);
+
+                if (!isProcessingQueue)
+                    StartCoroutine(ProcessTranslationQueue());
+
+                return;
+            }
+
+            if (!textObject.IsProcessingExceeded)
+            {
+                textObject.UpdateExceededText(text);
+                var coroutine = StartCoroutine(PollForTokenRecovery(textObject));
+                textObject.SetProcessingState(true, coroutine);
+            }
+            else
+            {
+                textObject.UpdateExceededText(text);
+            }
+        }
+
+        private IEnumerator PollForTokenRecovery(TextObject textObject)
+        {
+            int initialGenerationId = textObject.GenerationId;
+            const float maxPollingTime = 10f;
+            List<string> chunksToProcess = null;
+            bool allChunksSubmitted = false;
+
+            try
+            {
+                while (true)
+                {
+                    yield return null;
+
+                    if (chunksToProcess != null)
+                    {
+                        CleanupPollingState(textObject, chunksToProcess, false, initialGenerationId);
+                        chunksToProcess = null;
+                    }
+
+                    if (textObject == null || !textObject.IsAlive || textObject.LastExceededText == null)
+                        break;
+
+                    chunksToProcess = PrepareChunksForText(textObject.LastExceededText, textObject);
+
+                    if (chunksToProcess == null || chunksToProcess.Count == 0)
+                        break;
+
+                    allChunksSubmitted = false;
+                    bool textUpdated = false;
+                    float startTime = Time.time;
+
+                    while (textObject.IsAlive && Time.time - startTime < maxPollingTime)
+                    {
+                        if (textObject.HasTextUpdated)
+                        {
+                            textObject.ResetTextUpdateFlag();
+                            textUpdated = true;
+                            break;
+                        }
+
+                        if (textObject.GenerationId != initialGenerationId)
+                            break;
+
+                        textObject.UpdateTokenState();
+
+                        if (textObject.CanProcessRequest())
+                        {
+                            bool consumed = textObject.ShouldProcessRequest(textObject.LastExceededText);
+                            if (consumed)
+                            {
+                                if (textObject.GenerationId != initialGenerationId)
+                                    break;
+
+                                foreach (var chunk in chunksToProcess)
+                                    SubmitRequest(textObject, chunk);
+
+                                if (chunksToProcess.Count > 1)
+                                    textObject.Retain(chunksToProcess.Count - 1);
+
+                                allChunksSubmitted = true;
+
+                                if (!isProcessingQueue)
+                                    StartCoroutine(ProcessTranslationQueue());
+
+                                textObject.ResetLastExceededText();
+                                break;
+                            }
+                        }
+
+                        yield return null;
+                    }
+
+                    if (allChunksSubmitted || !textObject.IsAlive || textObject.GenerationId != initialGenerationId)
+                        break;
+
+                    if (textUpdated)
+                    {
+                        foreach (var chunk in chunksToProcess)
+                        {
+                            RemoveTextFromControlTextMap(textObject, chunk);
+                        }
+
+                        Pools.listStringPool.Return(chunksToProcess);
+                        chunksToProcess = null;
+                        continue;
+                    }
+
+                    if (Time.time - startTime >= maxPollingTime)
+                        break;
+                }
+            }
+            finally
+            {
+                CleanupPollingState(textObject, chunksToProcess, allChunksSubmitted, initialGenerationId);
+            }
+        }
+
+        private List<string> PrepareChunksForText(string text, TextObject textObject)
+        {
+            List<string> chunks = Pools.listStringPool.Get();
+
+            if (text.Length <= config.MaxBatchCharacterCount)
+            {
+                string toEnqueue = RemovePrefixFromText(text, textObject);
+                if (!TextProcessor.IsNullOrWhiteSpace(toEnqueue))
+                {
+                    chunks.Add(toEnqueue);
+                    AddTextToControlTextMap(textObject, toEnqueue);
+                }
+            }
+            else
+            {
+                if (config.FilterForIgnoredSubstringWithinText == AutoTranslateModule.FilterForIgnoredSubstringWithinTextType.CustomRegex)
+                {
+                    if (ignoredSubstringWithinTextRegex == null)
+                        AddChunks(chunks, text);
+                    else
+                    {
+                        MatchCollection matches = ignoredSubstringWithinTextRegex.Matches(text);
+                        int lastIndex = 0;
+
+                        foreach (Match match in matches)
+                        {
+                            if (lastIndex < match.Index)
+                                AddChunks(chunks, text.Substring(lastIndex, match.Index - lastIndex));
+
+                            chunks.Add(match.Value);
+                            lastIndex = match.Index + match.Length;
+                        }
+
+                        if (lastIndex < text.Length)
+                            AddChunks(chunks, text.Substring(lastIndex));
+                    }
+                }
+                else
+                {
+                    List<string> parts = Pools.listStringPool.Get();
+                    SubstringFilter(parts, text, keepMatches: true);
+                    foreach (var part in parts)
+                        AddChunks(chunks, part);
+                    Pools.listStringPool.Return(parts);
+                }
+
+                for (int i = chunks.Count - 1; i >= 0; i--)
+                {
+                    string processedChunk = RemovePrefixFromText(chunks[i], textObject);
+                    if (TextProcessor.IsNullOrWhiteSpace(processedChunk))
+                    {
+                        chunks.RemoveAt(i);
+                    }
+                    else
+                    {
+                        chunks[i] = processedChunk;
+                        AddTextToControlTextMap(textObject, processedChunk);
+                    }
+                }
+            }
+
+            return chunks;
+        }
+
+        private void CleanupPollingState(TextObject textObject, List<string> chunksToProcess = null, bool allChunksSubmitted = false, int initialGenerationId = -1)
+        {
+            textObject.SetProcessingState(false, null);
+
+            if (!allChunksSubmitted && chunksToProcess != null)
+            {
+                foreach (var chunk in chunksToProcess)
+                {
+                    RemoveTextFromControlTextMap(textObject, chunk);
+                }
+                TextObject.SafeRelease(textObject);
+
+                Pools.listStringPool.Return(chunksToProcess);
+            }
+            else if (chunksToProcess != null)
+            {
+                Pools.listStringPool.Return(chunksToProcess);
+            }
+        }
+
+        private void StopExceededPolling(TextObject textObject)
+        {
+            if (textObject != null && textObject.IsProcessingExceeded && textObject.ExceededCoroutine != null)
+            {
+                StopCoroutine(textObject.ExceededCoroutine);
+                CleanupPollingState(textObject);
             }
         }
     }

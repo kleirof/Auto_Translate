@@ -13,6 +13,29 @@ namespace AutoTranslate
         private int cachedInstanceID;
         private int refCount;
 
+        private float tokens;
+        private float lastUpdateTime;
+        private float lastCoolingResetTime;
+        private bool coolingDown;
+        private bool pendingRequest;
+        private string lastExceededText;
+        private bool isProcessingExceeded;
+        private Coroutine exceededCoroutine;
+
+        private const float MAX_TOKENS = 4f;
+        private const float NORMAL_FILL_RATE = 1f;
+        private const float COOLING_FILL_RATE = 1f;
+        private const float COOLING_DURATION = 1f;
+
+        private int generationId;
+        private static int nextGenerationId = 1;
+
+        private bool isProcessingRequest = false;
+
+        private bool textUpdated = false;
+
+        public bool HasTextUpdated => textUpdated;
+
         public object Target => target;
 
         public bool IsAlive
@@ -29,8 +52,18 @@ namespace AutoTranslate
         public object Object => IsAlive ? target : null;
         public int InstanceID => isComponent ? cachedInstanceID : 0;
 
-        private static readonly Dictionary<int, TextObject> unityMap = new Dictionary<int, TextObject>(128);
+        public bool HasExceededRequest => !string.IsNullOrEmpty(lastExceededText);
+        public string LastExceededText => lastExceededText;
+        public bool IsProcessingExceeded => isProcessingExceeded;
+        public Coroutine ExceededCoroutine => exceededCoroutine;
+        public float CurrentTokens => tokens;
+        public float LastUpdateTime => lastUpdateTime;
+        public bool IsCoolingDown => coolingDown;
+        public bool HasPendingRequest => pendingRequest;
+        public float CoolingProgress => coolingDown ? Mathf.Clamp01((Time.realtimeSinceStartup - lastCoolingResetTime) / COOLING_DURATION) : 0f;
+        public int GenerationId => generationId;
 
+        private static readonly Dictionary<int, TextObject> unityMap = new Dictionary<int, TextObject>(128);
         private static readonly Dictionary<object, TextObject> objectMap = new Dictionary<object, TextObject>(128);
 
         public void Reset()
@@ -42,7 +75,23 @@ namespace AutoTranslate
             cachedHashCode = 0;
             cachedInstanceID = 0;
             refCount = 0;
+
+            tokens = MAX_TOKENS;
+            lastUpdateTime = Time.realtimeSinceStartup;
+            lastCoolingResetTime = 0f;
+            coolingDown = false;
+            pendingRequest = false;
+            lastExceededText = null;
+            isProcessingExceeded = false;
+            exceededCoroutine = null;
+
+            isProcessingRequest = false;
+            textUpdated = false;
+            
+            if (nextGenerationId == int.MaxValue)
+                nextGenerationId = 1;
         }
+
 
         public void Set(object obj)
         {
@@ -50,17 +99,22 @@ namespace AutoTranslate
                 return;
 
             Reset();
+            generationId = nextGenerationId++;
 
             target = obj;
             isComponent = target is Component;
             cachedHashCode = RuntimeHelpers.GetHashCode(obj);
             cachedInstanceID = 0;
 
+            textUpdated = false;
+
             if (isComponent)
             {
                 var comp = target as Component;
                 cachedInstanceID = comp.GetInstanceID();
             }
+
+            InitializeTokenBucket();
         }
 
         public void Retain(int count = 1) => refCount += count;
@@ -71,6 +125,126 @@ namespace AutoTranslate
             refCount--;
             if (refCount == 0)
                 Pools.textObjectPool.Return(this);
+        }
+
+        public bool ShouldProcessRequest(string text, bool updateState = true)
+        {
+            if (isProcessingRequest)
+                return false;
+
+            isProcessingRequest = true;
+
+            try
+            {
+                float currentTime = Time.realtimeSinceStartup;
+                UpdateTokens(currentTime);
+
+                if (coolingDown)
+                {
+                    if (updateState)
+                    {
+                        lastCoolingResetTime = currentTime;
+                        pendingRequest = true;
+                        lastExceededText = text;
+                    }
+                    return false;
+                }
+                else
+                {
+                    if (tokens >= 1f)
+                    {
+                        if (updateState)
+                        {
+                            tokens -= 1f;
+                            lastExceededText = null;
+                        }
+                        return true;
+                    }
+                    else
+                    {
+                        if (updateState)
+                        {
+                            coolingDown = true;
+                            lastCoolingResetTime = currentTime;
+                            pendingRequest = true;
+                            lastExceededText = text;
+                        }
+                        return false;
+                    }
+                }
+            }
+            finally
+            {
+                isProcessingRequest = false;
+            }
+        }
+
+        public bool CanProcessRequest()
+        {
+            return ShouldProcessRequest(null, false);
+        }
+
+        public void UpdateTokenState()
+        {
+            UpdateTokens(Time.realtimeSinceStartup);
+        }
+
+        private void UpdateTokens(float currentTime)
+        {
+            float elapsed = currentTime - lastUpdateTime;
+            lastUpdateTime = currentTime;
+
+            if (coolingDown)
+            {
+                if (pendingRequest && (currentTime - lastCoolingResetTime) >= COOLING_DURATION)
+                {
+                    ExitCooling();
+                }
+                else
+                {
+                    tokens = Mathf.Min(MAX_TOKENS, tokens + elapsed * COOLING_FILL_RATE);
+                }
+            }
+            else
+            {
+                tokens = Mathf.Min(MAX_TOKENS, tokens + elapsed * NORMAL_FILL_RATE);
+            }
+        }
+
+        private void ExitCooling()
+        {
+            coolingDown = false;
+            tokens = MAX_TOKENS;
+
+            if (pendingRequest)
+            {
+                tokens -= 1f;
+                pendingRequest = false;
+                lastExceededText = null;
+            }
+        }
+
+        private void InitializeTokenBucket()
+        {
+            ResetTokenBucket();
+        }
+
+        private void ResetTokenBucket()
+        {
+            tokens = MAX_TOKENS;
+            lastUpdateTime = Time.realtimeSinceStartup;
+            lastCoolingResetTime = 0f;
+            coolingDown = false;
+            pendingRequest = false;
+            lastExceededText = null;
+            isProcessingExceeded = false;
+            exceededCoroutine = null;
+        }
+
+        public void SetProcessingState(bool processing, Coroutine coroutine = null)
+        {
+            isProcessingExceeded = processing;
+            exceededCoroutine = coroutine;
         }
 
         public bool Equals(TextObject other)
@@ -87,7 +261,8 @@ namespace AutoTranslate
         public static bool operator !=(TextObject left, TextObject right) => !(left == right);
 
         public override string ToString() =>
-            IsAlive ? $"{target.GetType().Name}" : $"TextObject(Dead) {target == null}";
+            IsAlive ? $"{target.GetType().Name} (Gen:{generationId})"
+                    : $"TextObject(Dead, Gen:{generationId})";
 
         public static TextObject GetTextObject(object obj)
         {
@@ -152,6 +327,22 @@ namespace AutoTranslate
                 if (to.Target != null)
                     objectMap.Remove(to.Target);
             }
+        }
+
+        public void UpdateExceededText(string text)
+        {
+            lastExceededText = text;
+            textUpdated = true;
+        }
+
+        public void ResetTextUpdateFlag()
+        {
+            textUpdated = false;
+        }
+
+        public void ResetLastExceededText()
+        {
+            lastExceededText = null;
         }
     }
 }

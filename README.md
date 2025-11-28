@@ -128,6 +128,9 @@ Setting **RegexForFullTextNeedToTranslate**, **RegexForEachLineNeedToTranslate**
 20. **TranslateTextFromTk2dTextMesh**  
     翻译 Tk2dTextMesh 中的文本。
 
+21. **EnableRateLimit**  
+    限制每个文本对象在短时间内可以发送的翻译请求数量，防止系统过载。
+
 ### 字体 Font
 
 1. **OverridedFont**  
@@ -269,6 +272,9 @@ Load the translation cache from \[cache_json_name\], which defaults to CachedTra
 
 20. **TranslateTextFromTk2dTextMesh**  
     Translate the text in Tk2dTextMesh.
+
+21. **EnableRateLimit**  
+    Limits the number of translation requests each text object can send in a short time to prevent system overload.
 
 ### Font
 
