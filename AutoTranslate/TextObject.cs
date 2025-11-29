@@ -87,7 +87,8 @@ namespace AutoTranslate
 
             isProcessingRequest = false;
             textUpdated = false;
-            
+            generationId = 0;
+
             if (nextGenerationId == int.MaxValue)
                 nextGenerationId = 1;
         }

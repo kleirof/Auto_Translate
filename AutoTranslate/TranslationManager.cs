@@ -1384,9 +1384,9 @@ namespace AutoTranslate
 
                     allChunksSubmitted = false;
                     bool textUpdated = false;
-                    float startTime = Time.time;
+                    float startTime = Time.realtimeSinceStartup;
 
-                    while (textObject.IsAlive && Time.time - startTime < maxPollingTime)
+                    while (textObject.IsAlive && Time.realtimeSinceStartup - startTime < maxPollingTime)
                     {
                         if (textObject.HasTextUpdated)
                         {
@@ -1442,7 +1442,7 @@ namespace AutoTranslate
                         continue;
                     }
 
-                    if (Time.time - startTime >= maxPollingTime)
+                    if (Time.realtimeSinceStartup - startTime >= maxPollingTime)
                         break;
                 }
             }
