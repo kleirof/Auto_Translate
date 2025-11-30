@@ -114,8 +114,6 @@ namespace AutoTranslate
                 var comp = target as Component;
                 cachedInstanceID = comp.GetInstanceID();
             }
-
-            InitializeTokenBucket();
         }
 
         public void Retain(int count = 1) => refCount += count;
@@ -223,23 +221,6 @@ namespace AutoTranslate
                 pendingRequest = false;
                 lastExceededText = null;
             }
-        }
-
-        private void InitializeTokenBucket()
-        {
-            ResetTokenBucket();
-        }
-
-        private void ResetTokenBucket()
-        {
-            tokens = MAX_TOKENS;
-            lastUpdateTime = Time.realtimeSinceStartup;
-            lastCoolingResetTime = 0f;
-            coolingDown = false;
-            pendingRequest = false;
-            lastExceededText = null;
-            isProcessingExceeded = false;
-            exceededCoroutine = null;
         }
 
         public void SetProcessingState(bool processing, Coroutine coroutine = null)
