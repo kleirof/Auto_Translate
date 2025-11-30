@@ -20,6 +20,7 @@ namespace AutoTranslate
         private static Dictionary<int, DfLabelFlagManager> managerMap = new Dictionary<int, DfLabelFlagManager>(512);
 
         private static List<int> deadKeysCache = new List<int>(128);
+        private static float lastCleanTime;
 
         public int InstanceID { get; set; }
 
@@ -52,8 +53,12 @@ namespace AutoTranslate
 
             int instanceID = dfLabel.GetInstanceID();
 
-            if (Time.frameCount % 3000 == 0)
+            float now = Time.realtimeSinceStartup;
+            if (now - lastCleanTime >= 120f)
+            {
                 CleanupDeadReferences();
+                lastCleanTime = now;
+            }
 
             if (managerMap.TryGetValue(instanceID, out DfLabelFlagManager cachedManager))
             {
