@@ -1126,7 +1126,8 @@ namespace AutoTranslate
         {
             try
             {
-                if (textBox == null || !textBox.isActiveAndEnabled)
+                GameObject gameObject = textBox.gameObject;
+                if (textBox == null || !textBox.isActiveAndEnabled || textBox.IsScalingDown || gameObject == null || !gameObject.activeInHierarchy || !gameObject.activeSelf)
                     return;
 
                 Vector2 oldBoxSize = textBox.boxSprite.dimensions;
