@@ -787,36 +787,6 @@ namespace AutoTranslate
             }
         }
 
-        [HarmonyPatch(typeof(FoyerPreloader), nameof(FoyerPreloader.Awake))]
-        public class FoyerPreloaderAwakePatchClass
-        {
-            [HarmonyPostfix]
-            public static void FoyerPreloaderAwakePostfix(FoyerPreloader __instance)
-            {
-                try
-                {
-                    Transform loadingTransform = __instance.transform?.Find("weird name thing");
-                    if (loadingTransform == null)
-                        return;
-                    DFScaleFixer component = loadingTransform.GetComponent<DFScaleFixer>();
-                    if (component != null)
-                        UnityEngine.Object.Destroy(component);
-                    dfGUIManager guiManager = loadingTransform.GetComponent<dfGUIManager>();
-                    if (guiManager == null)
-                        return;
-                    guiManager.UIScale = 1;
-                    guiManager.PixelPerfectMode = true;
-
-                    for (int i = 0; i < loadingTransform.childCount; i++)
-                    {
-                        Transform child = loadingTransform.GetChild(i);
-                        if (child.GetComponent<dfLabel>() == null)
-                            child.localScale *= 5;
-                    }
-                } catch { }
-            }
-        }
-
         [HarmonyPatch(typeof(GameManager), nameof(GameManager.LoadNextLevel))]
         public class LoadNextLevelPatchClass
         {
